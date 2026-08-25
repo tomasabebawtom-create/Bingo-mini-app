@@ -29,6 +29,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes,
 )
 
@@ -319,7 +321,7 @@ def build_main_menu() -> InlineKeyboardMarkup:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 እንኳን ወደ Beteseb Bingo በደህና መጡ! ከታች ካለው ምረጥ፦",
+        "👋 እንኳን ወደ 1 Bingo በደህና መጡ! ከታች ካለው ምረጥ፦",
         reply_markup=build_main_menu(),
     )
 
@@ -351,9 +353,9 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(f"💰 ሂሳብህ፦ {bal} ነጥብ")
 
     elif action == "menu_deposit":
+        context.user_data["awaiting_deposit"] = True
         await query.message.reply_text(
-            "💳 ገንዘብ ለማስገባት፦ `/deposit <መጠን>` ብለህ ጻፍ።\nለምሳሌ፦ `/deposit 100`",
-            parse_mode="Markdown",
+            "💳 እባክህ የምትፈልገውን የነጥብ መጠን (ቁጥር ብቻ) ላክ።\nለምሳሌ፦ 100"
         )
 
     elif action == "menu_support":
@@ -400,17 +402,13 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💰 ሂሳብህ፦ {bal} ነጥብ")
 
 
-async def deposit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_deposit_request(user, amount: int, context: ContextTypes.DEFAULT_TYPE, reply_target):
+    """Create a pending deposit request and notify the admin.
+    reply_target must have a .reply_text() coroutine (update.message or query.message)."""
     global _next_request_id
-    user = update.effective_user
 
-    if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("እንዲህ ተጠቀም፦ /deposit 100")
-        return
-
-    amount = int(context.args[0])
     if amount <= 0:
-        await update.message.reply_text("መጠኑ ከ0 በላይ መሆን አለበት።")
+        await reply_target.reply_text("መጠኑ ከ0 በላይ መሆን አለበት።")
         return
 
     req_id = str(_next_request_id)
@@ -421,7 +419,7 @@ async def deposit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "amount": amount,
     }
 
-    await update.message.reply_text(
+    await reply_target.reply_text(
         f"🕓 ጥያቄህ ወደ አድሚን ተልኳል።\n\n"
         f"💳 {amount} ብር ወደዚህ Telebirr ቁጥር ላክ፦\n"
         f"📱 `{TELEBIRR_NUMBER}`\n\n"
@@ -444,6 +442,34 @@ async def deposit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"የተጠየቀ መጠን፦ {amount} ነጥብ",
         reply_markup=keyboard,
     )
+
+
+async def deposit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if not context.args or not context.args[0].isdigit():
+        context.user_data["awaiting_deposit"] = True
+        await update.message.reply_text(
+            "💳 እባክህ የምትፈልገውን የነጥብ መጠን (ቁጥር ብቻ) ላክ።\nለምሳሌ፦ 100"
+        )
+        return
+
+    amount = int(context.args[0])
+    await process_deposit_request(user, amount, context, update.message)
+
+
+async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Catches plain replies after a button/command asked the user for input
+    (currently: the deposit amount)."""
+    if not context.user_data.get("awaiting_deposit"):
+        return
+
+    text = (update.message.text or "").strip()
+    if text.isdigit() and int(text) > 0:
+        context.user_data["awaiting_deposit"] = False
+        await process_deposit_request(update.effective_user, int(text), context, update.message)
+    else:
+        await update.message.reply_text("እባክህ ትክክለኛ ቁጥር ብቻ ላክ (ለምሳሌ፦ 100)።")
 
 
 async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -752,6 +778,7 @@ def main():
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^menu_"))
     app.add_handler(CommandHandler("balance", balance_cmd))
     app.add_handler(CommandHandler("deposit", deposit_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plain_text))
     app.add_handler(CallbackQueryHandler(deposit_callback, pattern=r"^dep_"))
     app.add_handler(CommandHandler("withdraw", withdraw_cmd))
     app.add_handler(CallbackQueryHandler(withdraw_callback, pattern=r"^wd_"))
