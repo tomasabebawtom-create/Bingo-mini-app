@@ -24,6 +24,12 @@
             color: #cbd5e1;
             margin-top: 0;
         }
+        #balance-display {
+            color: #fbbf24;
+            font-weight: bold;
+            font-size: 18px;
+            margin: 6px 0 0 0;
+        }
 
         #picker-section {
             margin: 20px auto;
@@ -141,6 +147,7 @@
 
     <h1>🎡 Spin & Win</h1>
     <p id="user-greeting">እንኳን ደህና መጡ!</p>
+    <p id="balance-display">ቀሪ ሂሳብ: <span id="balance-value">-</span></p>
 
     <div id="picker-section">
         <h3>ቁጥርዎን ይምረጡ (0 - 36)</h3>
@@ -156,10 +163,13 @@
         <div id="hub">🎯</div>
     </div>
 
-    <button id="spin-btn" onclick="spinWheel()">አዙር (SPIN)</button>
+    <button id="spin-btn" onclick="spinWheel()">አዙር (SPIN) - 10 ነጥብ</button>
     <h2 id="result"></h2>
 
     <script>
+        // ⚠️ backend host ካደረግህ በኋላ ይህን ወደ ትክክለኛው URL ቀይር
+        const API_BASE_URL = "https://YOUR-BACKEND-URL-HERE";
+
         let tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -246,7 +256,20 @@
         let currentRotation = 0;
         let spinning = false;
 
-        function spinWheel() {
+        async function fetchBalance() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/balance?initData=${encodeURIComponent(tg.initData)}`);
+                const data = await res.json();
+                if (data.balance !== undefined) {
+                    document.getElementById('balance-value').textContent = data.balance;
+                }
+            } catch (e) {
+                console.error('balance fetch failed', e);
+            }
+        }
+        fetchBalance();
+
+        async function spinWheel() {
             if (spinning) return;
 
             if (selectedNumber === null) {
@@ -260,9 +283,35 @@
 
             const wheel = document.getElementById('wheel-container');
             const resultText = document.getElementById('result');
+            resultText.innerText = "እየተላከ ነው...";
+
+            let data;
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/spin-win`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        initData: tg.initData,
+                        number: selectedNumber
+                    })
+                });
+                data = await res.json();
+                if (!res.ok) {
+                    resultText.innerText = `⚠️ ${data.error || 'ስህተት ተከስቷል'}`;
+                    spinning = false;
+                    document.getElementById('spin-btn').disabled = false;
+                    return;
+                }
+            } catch (e) {
+                resultText.innerText = '⚠️ ግንኙነት አልተሳካም። እንደገና ይሞክሩ።';
+                spinning = false;
+                document.getElementById('spin-btn').disabled = false;
+                return;
+            }
+
             resultText.innerText = "እየተሽከረከረ ነው...";
 
-            const winningNumber = Math.floor(Math.random() * 37);
+            const winningNumber = data.winning_number;
             const winningIndex = WHEEL_ORDER.indexOf(winningNumber);
 
             const targetAngle = winningIndex * segAngle + segAngle / 2;
@@ -275,9 +324,10 @@
             setTimeout(() => {
                 spinning = false;
                 document.getElementById('spin-btn').disabled = false;
+                document.getElementById('balance-value').textContent = data.balance;
 
-                if (winningNumber === selectedNumber) {
-                    resultText.innerText = `🎉 እንኳን ደስ አለዎት! ቁጥር ${winningNumber} ወጣ - አሸንፈዋል!`;
+                if (data.won) {
+                    resultText.innerText = `🎉 እንኳን ደስ አለዎት! ቁጥር ${winningNumber} ወጣ - ${data.amount} ነጥብ አሸንፈዋል!`;
                     if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
                 } else {
                     resultText.innerText = `😔 ቁጥር ${winningNumber} ወጣ። ቁጥርዎ ${selectedNumber} አልደረሰም። እንደገና ይሞክሩ!`;
