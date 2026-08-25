@@ -1,613 +1,93 @@
 <!DOCTYPE html>
 <html lang="am">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ገበታ ቢንጎ</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
-<style>
-  :root{
-    --navy: #1b1830;
-    --navy-deep: #14121f;
-    --violet-soft: rgba(120,90,190,0.22);
-
-    --b: #4f7cf0;
-    --i: #7a63e8;
-    --n: #9b4fd6;
-    --g: #34c375;
-    --o: #ef8a3c;
-
-    --gold: #f4b942;
-    --cream: #f4eefb;
-    --muted: #b7a9d6;
-  }
-
-  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
-  html,body{ margin:0; padding:0; height:100%; background: var(--navy-deep); }
-
-  body{
-    font-family:'Manrope', sans-serif;
-    color: var(--cream);
-    background: linear-gradient(180deg, var(--navy) 0%, #241c40 45%, #2c1f4a 100%);
-    min-height:100vh;
-    display:flex;
-    justify-content:center;
-  }
-
-  @media (prefers-reduced-motion: reduce){
-    *{ animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-  }
-
-  .app{ width:100%; max-width: 480px; min-height:100vh; display:flex; flex-direction:column; }
-
-  /* ---------- top bar ---------- */
-  .topbar{ display:flex; align-items:center; justify-content:space-between; padding: 14px 16px; background: var(--navy-deep); }
-  .topbar .icon-btn{
-    width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    background: rgba(255,255,255,0.06); color: var(--cream); font-size: 16px; border:none;
-  }
-  .topbar h1{ margin:0; font-size: 18px; font-weight: 800; flex:1; padding: 0 12px; }
-  .topbar .actions{ display:flex; gap:8px; }
-
-  /* ---------- stats strip ---------- */
-  .stats{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px 10px 14px; }
-  .stat{ background: var(--violet-soft); border-radius: 10px; padding: 7px 4px; text-align:center; }
-  .stat .label{ font-size: 10px; color: var(--muted); font-weight:700; }
-  .stat .value{ font-size: 13px; font-weight:800; color: var(--cream); margin-top:2px; word-break: break-all; }
-  .stat.balance .value{ color: var(--gold); }
-
-  /* ---------- body ---------- */
-  .body{ flex:1; display:grid; grid-template-columns: 44% 56%; gap: 8px; padding: 0 10px; }
-
-  .board-head{ display:grid; grid-template-columns: repeat(5,1fr); gap:5px; margin-bottom:5px; }
-  .board-head span{ text-align:center; border-radius:8px; padding:8px 0; font-weight:800; font-size:15px; color:#fff; }
-  .board-head span:nth-child(1){ background: var(--b); }
-  .board-head span:nth-child(2){ background: var(--i); }
-  .board-head span:nth-child(3){ background: var(--n); }
-  .board-head span:nth-child(4){ background: var(--g); }
-  .board-head span:nth-child(5){ background: var(--o); }
-
-  .board-grid{ display:grid; grid-template-columns: repeat(5,1fr); gap:5px; }
-  .cell{
-    aspect-ratio: 1; border-radius: 8px; background: rgba(255,255,255,0.08);
-    display:flex; align-items:center; justify-content:center;
-    font-size: 13px; font-weight:700; color: var(--muted);
-    transition: background 0.25s ease, color 0.25s ease, transform 0.2s ease;
-  }
-  .cell.called{ background: var(--o); color:#fff; }
-  .cell.current{ background: var(--g); color:#fff; transform: scale(1.06); }
-
-  .panel{ display:flex; flex-direction:column; }
-
-  .recent{
-    display:flex; align-items:center; gap:6px; background: rgba(255,255,255,0.05);
-    border-radius: 999px; padding: 8px 10px; margin-bottom: 12px; overflow-x:auto;
-  }
-  .recent .chip{
-    flex:0 0 auto; background: var(--b); color:#fff; font-weight:800; font-size:12px;
-    border-radius:50%; width:38px; height:38px; display:flex; align-items:center; justify-content:center;
-  }
-  .recent .mute{
-    margin-left:auto; flex:0 0 auto; width:30px; height:30px; border-radius:50%;
-    background: rgba(255,255,255,0.08); border:none; color:var(--cream); font-size:14px;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .recent .mute.off{ color: var(--muted); }
-
-  .stage{
-    background: rgba(255,255,255,0.04); border-radius: 14px; padding: 18px 10px;
-    display:flex; align-items:center; justify-content:center; margin-bottom: 12px;
-  }
-  .call-circle{
-    width: 130px; height:130px; border-radius:50%; background: #fff;
-    display:flex; align-items:center; justify-content:center;
-    box-shadow: 0 0 0 6px var(--gold), 0 0 26px 6px rgba(244,185,66,0.55);
-  }
-  .call-circle .txt{ font-size: 26px; font-weight: 800; color: #4c1d95; }
-  .call-circle.idle{ box-shadow: 0 0 0 6px rgba(255,255,255,0.15); }
-
-  .toggle-row{
-    display:flex; align-items:center; justify-content:space-between; background: rgba(255,255,255,0.05);
-    border-radius: 999px; padding: 10px 14px; margin-bottom: 12px; font-weight:700; font-size:14px;
-  }
-  .switch{ width: 46px; height:26px; border-radius:999px; background: rgba(255,255,255,0.15); position:relative; border:none; flex:0 0 auto; }
-  .switch .knob{ position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background: var(--muted); transition: left 0.2s ease, background 0.2s ease; }
-  .switch.on{ background: rgba(52,195,117,0.35); }
-  .switch.on .knob{ left:23px; background: var(--g); }
-
-  .info-panel{
-    flex:1; background: rgba(255,255,255,0.03); border-radius: 14px; padding: 22px 14px; text-align:center;
-    display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap: 10px;
-  }
-  .info-panel h2{ margin:0; font-size: 20px; font-weight:800; }
-  .info-panel p{ margin:0; font-size: 13px; color: var(--muted); line-height:1.6; max-width: 220px; }
-
-  /* own card + bingo claim */
-  .mycard{ flex:1; background: rgba(255,255,255,0.03); border-radius:14px; padding:12px; display:flex; flex-direction:column; }
-  .mycard .title{ font-size:12px; font-weight:800; color:var(--gold); text-align:center; margin-bottom:8px; }
-  .mycard-head{ display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:4px; }
-  .mycard-head span{ text-align:center; font-size:11px; font-weight:800; color:var(--muted); }
-  .mycard-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:10px; }
-  .mycell{
-    aspect-ratio:1; border-radius:6px; background:rgba(255,255,255,0.08);
-    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:var(--cream);
-  }
-  .mycell.free{ background: var(--n); color:#fff; font-size:9px; }
-  .mycell.marked{ background: var(--g); color:#fff; }
-  .bingo-btn{
-    margin-top:auto; border:none; border-radius:12px; padding:14px; font-weight:800; font-size:16px;
-    background: linear-gradient(135deg, var(--gold), #e08a2c); color:#3a1e00;
-  }
-  .bingo-btn:disabled{ opacity:0.45; }
-
-  /* ---------- bottom bar ---------- */
-  .bottombar{ display:flex; gap:8px; padding: 12px 10px 20px; }
-  .bottombar button{ flex:1; border:none; border-radius: 12px; padding: 13px 6px; font-weight:800; font-size:14px; color:#fff; }
-  .btn-leave{ background: linear-gradient(135deg, #ff7a52, #e5453b); }
-  .btn-refresh{ background: linear-gradient(135deg, #8f2f3d, #6a1f2b); }
-  .btn-auto{ background: linear-gradient(135deg, #cfa257, #8c6a3c); color: rgba(255,255,255,0.75); }
-  .btn-auto.active{ color:#fff; }
-
-  /* ---------- overlays ---------- */
-  .overlay{
-    position:fixed; inset:0; background: rgba(15,13,26,0.94); z-index:30;
-    display:none; flex-direction:column; padding: 18px;
-  }
-  .overlay.show{ display:flex; }
-  .overlay h2{ margin:0 0 4px; font-size:20px; font-weight:800; text-align:center; }
-  .overlay .sub{ text-align:center; color:var(--muted); font-size:13px; margin-bottom:14px; }
-
-  .card-grid-pick{
-    display:grid; grid-template-columns: repeat(8, 1fr); gap:6px; overflow-y:auto; flex:1;
-  }
-  .pick-cell{
-    aspect-ratio:1; border-radius:8px; background: rgba(255,255,255,0.08);
-    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--cream); border:none;
-  }
-  .pick-cell.taken{ background: rgba(255,255,255,0.03); color:var(--muted); opacity:0.4; }
-  .pick-cell.chosen{ background: var(--gold); color:#3a1e00; }
-
-  .preview-box{
-    margin-top:12px; background: rgba(255,255,255,0.05); border-radius:12px; padding:10px; display:none;
-  }
-  .preview-box.show{ display:block; }
-  .preview-box .phead{ display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:4px; }
-  .preview-box .phead span{ text-align:center; font-size:11px; font-weight:800; color:var(--muted); }
-  .preview-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:10px; }
-  .preview-grid .pc{ aspect-ratio:1; border-radius:6px; background:rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
-  .preview-grid .pc.free{ background:var(--n); color:#fff; font-size:9px; }
-  .buy-btn{ width:100%; border:none; border-radius:12px; padding:13px; font-weight:800; font-size:15px; background: linear-gradient(135deg, var(--g), #1f8f52); color:#fff; }
-  .buy-btn:disabled{ opacity:0.5; }
-  .reject-msg{ color:#ff8b7a; font-size:12px; text-align:center; margin-top:8px; min-height:16px; }
-
-  .winner-overlay{ align-items:center; justify-content:center; text-align:center; gap:14px; }
-  .winner-overlay .big{ font-size:44px; }
-  .winner-overlay button{
-    margin-top:8px; padding:12px 26px; border-radius:12px; border:none; background: var(--b); color:#fff; font-weight:800;
-  }
-
-  .toast{
-    position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
-    background:#3a1e2e; color:#fff; padding:10px 16px; border-radius:10px; font-size:13px;
-    opacity:0; pointer-events:none; transition:opacity 0.25s ease; z-index:40; max-width:80%; text-align:center;
-  }
-  .toast.show{ opacity:1; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spin and Win Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #0f172a;
+            color: #ffffff;
+            text-align: center;
+            padding: 20px;
+        }
+        #wheel-container {
+            margin: 30px auto;
+            position: relative;
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            border: 10px solid #fbbf24;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: conic-gradient(
+                #ef4444 0deg 60deg,
+                #3b82f6 60deg 120deg,
+                #10b981 120deg 180deg,
+                #f59e0b 180deg 240deg,
+                #8b5cf6 240deg 300deg,
+                #ec4899 300deg 360deg
+            );
+            transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+        }
+        button {
+            background-color: #fbbf24;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+    </style>
 </head>
 <body>
-<div class="app">
 
-  <div class="topbar">
-    <button class="icon-btn" id="leaveIconBtn">✕</button>
-    <h1>ገበታ ቢንጎ</h1>
-    <div class="actions">
-      <button class="icon-btn">⌄</button>
-      <button class="icon-btn">⋮</button>
-    </div>
-  </div>
+    <h1>🎡 Spin & Win</h1>
+    <p id="user-greeting">እንኳን ደህና መጡ!</p>
 
-  <div class="stats">
-    <div class="stat"><div class="label">Game ID</div><div class="value" id="statGameId">—</div></div>
-    <div class="stat"><div class="label">Players</div><div class="value" id="statPlayers">0</div></div>
-    <div class="stat"><div class="label">Cards Sold</div><div class="value" id="statCardsSold">0</div></div>
-    <div class="stat"><div class="label">Bet</div><div class="value" id="statBet">—</div></div>
-    <div class="stat"><div class="label">Derash</div><div class="value" id="statDerash">—</div></div>
-    <div class="stat balance"><div class="label">Balance</div><div class="value" id="statBalance">—</div></div>
-  </div>
+    <div id="wheel-container"></div>
+    
+    <button onclick="spinWheel()">አዙር (SPIN)</button>
+    <h2 id="result"></h2>
 
-  <div class="body">
-    <div class="board">
-      <div class="board-head"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
-      <div class="board-grid" id="boardGrid"></div>
-    </div>
+    <script>
+        // የቴሌግራም ዌብ አፕ ማቀናጀት
+        let tg = window.Telegram.WebApp;
+        tg.expand();
 
-    <div class="panel">
-      <div class="recent" id="recentRow">
-        <button class="mute" id="muteBtn">🔊</button>
-      </div>
-
-      <div class="stage">
-        <div class="call-circle idle" id="callCircle"><div class="txt">30</div></div>
-      </div>
-
-      <div class="toggle-row">
-        <span>Automatic</span>
-        <button class="switch on" id="autoSwitch"><div class="knob"></div></button>
-      </div>
-
-      <!-- ካርቴላ ካልገዙ የሚታይ -->
-      <div class="info-panel" id="infoPanel">
-        <h2 id="infoTitle">Watching Only</h2>
-        <p id="infoText">ካርቴላ ይምረጡ፡፡ ጨዋታው ራሱ ይጀምራል፣ ቁጥሮችም እየተጠሩ ይታያሉ።</p>
-      </div>
-
-      <!-- ካርቴላ ከገዙ የሚታይ -->
-      <div class="mycard" id="myCardPanel" style="display:none;">
-        <div class="title" id="myCardTitle">የካርቴላ ቁ. —</div>
-        <div class="mycard-head"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
-        <div class="mycard-grid" id="myCardGrid"></div>
-        <button class="bingo-btn" id="bingoBtn" disabled>ቢንጎ! 🎉</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="bottombar">
-    <button class="btn-leave" id="leaveBtn">Leave</button>
-    <button class="btn-refresh" id="refreshBtn">↺ Refresh</button>
-    <button class="btn-auto active" id="autoBtn">Automatic</button>
-  </div>
-</div>
-
-<!-- የካርቴላ ምርጫ overlay -->
-<div class="overlay" id="pickOverlay">
-  <h2>ካርቴላ ይምረጡ</h2>
-  <div class="sub" id="pickSub">ዋጋ 10 ብር። ያልተያዘ ቁጥር ይንኩ።</div>
-  <div class="card-grid-pick" id="pickGrid"></div>
-  <div class="preview-box" id="previewBox">
-    <div class="phead"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
-    <div class="preview-grid" id="previewGrid"></div>
-    <button class="buy-btn" id="buyBtn">ካርቴላ ግዙ — 10 ብር</button>
-    <div class="reject-msg" id="rejectMsg"></div>
-  </div>
-</div>
-
-<!-- አሸናፊ overlay -->
-<div class="overlay winner-overlay" id="winOverlay">
-  <div class="big">🏆</div>
-  <h2 id="winTitle">አሸናፊ!</h2>
-  <div class="sub" id="winSub"></div>
-  <button id="winCloseBtn">ቀጥል</button>
-</div>
-
-<div class="overlay winner-overlay" id="leftOverlay">
-  <h2>ወጥተዋል</h2>
-  <button id="rejoinBtn">እንደገና ግባ</button>
-</div>
-
-<div class="toast" id="toast"></div>
-<audio id="caller"></audio>
-
-<script>
-  const COLS = ['B','I','N','G','O'];
-  const letterFor = n => n <= 15 ? 'B' : n <= 30 ? 'I' : n <= 45 ? 'N' : n <= 60 ? 'G' : 'O';
-
-  // ---------- master board (1-75) ----------
-  const boardGrid = document.getElementById('boardGrid');
-  const cells = {};
-  for (let row = 0; row < 15; row++){
-    for (let col = 0; col < 5; col++){
-      const number = col * 15 + row + 1;
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      cell.textContent = number;
-      cell.style.order = row * 5 + col;
-      boardGrid.appendChild(cell);
-      cells[number] = cell;
-    }
-  }
-
-  // ---------- elements ----------
-  const statGameId = document.getElementById('statGameId');
-  const statPlayers = document.getElementById('statPlayers');
-  const statCardsSold = document.getElementById('statCardsSold');
-  const statBet = document.getElementById('statBet');
-  const statDerash = document.getElementById('statDerash');
-  const statBalance = document.getElementById('statBalance');
-
-  const recentRow = document.getElementById('recentRow');
-  const muteBtn = document.getElementById('muteBtn');
-  const callCircle = document.getElementById('callCircle');
-  const autoSwitch = document.getElementById('autoSwitch');
-  const autoBtn = document.getElementById('autoBtn');
-  const infoPanel = document.getElementById('infoPanel');
-  const infoTitle = document.getElementById('infoTitle');
-  const infoText = document.getElementById('infoText');
-  const myCardPanel = document.getElementById('myCardPanel');
-  const myCardTitle = document.getElementById('myCardTitle');
-  const myCardGrid = document.getElementById('myCardGrid');
-  const bingoBtn = document.getElementById('bingoBtn');
-  const caller = document.getElementById('caller');
-
-  const pickOverlay = document.getElementById('pickOverlay');
-  const pickGrid = document.getElementById('pickGrid');
-  const previewBox = document.getElementById('previewBox');
-  const previewGrid = document.getElementById('previewGrid');
-  const buyBtn = document.getElementById('buyBtn');
-  const rejectMsg = document.getElementById('rejectMsg');
-
-  const winOverlay = document.getElementById('winOverlay');
-  const winTitle = document.getElementById('winTitle');
-  const winSub = document.getElementById('winSub');
-  const leftOverlay = document.getElementById('leftOverlay');
-  const toastEl = document.getElementById('toast');
-
-  let muted = false;
-  let auto = true;
-  let myCardId = null;
-  let myGrid = null;
-  let myCells = {};
-  let catalog = {};
-  let takenIds = new Set();
-  let selectedPreviewId = null;
-  let lastCalledNumbers = [];
-
-  function toast(msg){
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    setTimeout(() => toastEl.classList.remove('show'), 2200);
-  }
-
-  function setAuto(v){
-    auto = v;
-    autoSwitch.classList.toggle('on', auto);
-    autoBtn.classList.toggle('active', auto);
-  }
-  autoSwitch.addEventListener('click', () => setAuto(!auto));
-  autoBtn.addEventListener('click', () => setAuto(!auto));
-
-  muteBtn.addEventListener('click', () => {
-    muted = !muted;
-    muteBtn.textContent = muted ? '🔇' : '🔊';
-    muteBtn.classList.toggle('off', muted);
-  });
-
-  document.getElementById('leaveBtn').addEventListener('click', leaveGame);
-  document.getElementById('leaveIconBtn').addEventListener('click', leaveGame);
-  document.getElementById('refreshBtn').addEventListener('click', () => location.reload());
-  document.getElementById('rejoinBtn').addEventListener('click', () => location.reload());
-
-  function leaveGame(){
-    socket.disconnect();
-    leftOverlay.classList.add('show');
-  }
-
-  // ---------- master board painting ----------
-  function paintCalled(calledNumbers){
-    Object.values(cells).forEach(c => c.classList.remove('called', 'current'));
-    calledNumbers.forEach(n => cells[n] && cells[n].classList.add('called'));
-    const current = calledNumbers[calledNumbers.length - 1];
-    if (current) cells[current].classList.add('current');
-  }
-
-  function paintRecent(calledNumbers){
-    recentRow.querySelectorAll('.chip').forEach(c => c.remove());
-    calledNumbers.slice(-4).forEach(n => {
-      const chip = document.createElement('div');
-      chip.className = 'chip';
-      chip.textContent = `${letterFor(n)}-${n}`;
-      recentRow.insertBefore(chip, muteBtn);
-    });
-  }
-
-  function showCountdown(seconds){
-    callCircle.classList.add('idle');
-    callCircle.innerHTML = `<div class="txt">${seconds}</div>`;
-  }
-  function showCall(number){
-    callCircle.classList.remove('idle');
-    callCircle.innerHTML = `<div class="txt">${letterFor(number)}-${number}</div>`;
-  }
-  function showFinished(){
-    callCircle.classList.add('idle');
-    callCircle.innerHTML = `<div class="txt">ተጠናቋል 🎉</div>`;
-  }
-
-  // ---------- own-card rendering ----------
-  function renderMyCard(cardId, grid){
-    myCardId = cardId;
-    myGrid = grid;
-    myCardTitle.textContent = `የካርቴላ ቁ. ${cardId}`;
-    myCardGrid.innerHTML = '';
-    myCells = {};
-    for (let row = 0; row < 5; row++){
-      for (let col = 0; col < 5; col++){
-        const val = grid[COLS[col]][row];
-        const cell = document.createElement('div');
-        cell.className = 'mycell';
-        cell.style.order = row * 5 + col;
-        if (val === 'FREE'){
-          cell.classList.add('free', 'marked');
-          cell.textContent = 'FREE';
-        } else {
-          cell.textContent = val;
-          myCells[val] = cell;
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            let username = tg.initDataUnsafe.user.first_name;
+            document.getElementById("user-greeting").innerText = `ሰላም ${username}፣ ዕድልዎን ይሞክሩ!`;
         }
-        myCardGrid.appendChild(cell);
-      }
-    }
-    infoPanel.style.display = 'none';
-    myCardPanel.style.display = 'flex';
-    markMyCard(lastCalledNumbers);
-  }
 
-  function markMyCard(calledNumbers){
-    Object.entries(myCells).forEach(([num, cell]) => {
-      cell.classList.toggle('marked', calledNumbers.includes(Number(num)));
-    });
-  }
+        let currentRotation = 0;
 
-  function clearMyCard(){
-    myCardId = null; myGrid = null; myCells = {};
-    myCardPanel.style.display = 'none';
-    infoPanel.style.display = 'flex';
-  }
+        function spinWheel() {
+            const wheel = document.getElementById("wheel-container");
+            const resultText = document.getElementById("result");
+            
+            resultText.innerText = "እየተሽከረከረ ነው...";
 
-  bingoBtn.addEventListener('click', () => socket.emit('claim_bingo'));
+            // የዘፈቀደ የማዞሪያ ዲግሪ (ከ 3 እስከ 5 ሙሉ ዙር በተጨማሪ የተወሰነ ዕድል)
+            let randomDegree = Math.floor(Math.random() * 3600) + 720;
+            currentRotation += randomDegree;
+            
+            wheel.style.transform = `rotate(${currentRotation}deg)`;
 
-  // ---------- card picker overlay ----------
-  function buildPickGrid(){
-    pickGrid.innerHTML = '';
-    for (let id = 1; id <= 100; id++){
-      const btn = document.createElement('button');
-      btn.className = 'pick-cell';
-      btn.textContent = id;
-      if (takenIds.has(id)) btn.classList.add('taken');
-      btn.addEventListener('click', () => selectPreview(id));
-      pickGrid.appendChild(btn);
-    }
-  }
-  function refreshTakenStyles(){
-    [...pickGrid.children].forEach((btn, idx) => {
-      const id = idx + 1;
-      btn.classList.toggle('taken', takenIds.has(id));
-    });
-  }
-
-  function selectPreview(id){
-    if (takenIds.has(id)) return;
-    selectedPreviewId = id;
-    [...pickGrid.children].forEach(b => b.classList.remove('chosen'));
-    pickGrid.children[id - 1].classList.add('chosen');
-
-    const grid = catalog[id];
-    previewGrid.innerHTML = '';
-    for (let row = 0; row < 5; row++){
-      for (let col = 0; col < 5; col++){
-        const val = grid[COLS[col]][row];
-        const pc = document.createElement('div');
-        pc.className = 'pc';
-        pc.style.order = row * 5 + col;
-        if (val === 'FREE'){ pc.classList.add('free'); pc.textContent = 'FREE'; }
-        else pc.textContent = val;
-        previewGrid.appendChild(pc);
-      }
-    }
-    previewBox.classList.add('show');
-    rejectMsg.textContent = '';
-  }
-
-  buyBtn.addEventListener('click', () => {
-    if (selectedPreviewId) socket.emit('select_card', { cardId: selectedPreviewId });
-  });
-
-  function openPicker(){
-    if (myCardId) return; // ቀድሞውኑ ገዝቷል
-    selectedPreviewId = null;
-    previewBox.classList.remove('show');
-    rejectMsg.textContent = '';
-    pickOverlay.classList.add('show');
-  }
-  function closePicker(){ pickOverlay.classList.remove('show'); }
-
-  // ---------- socket ----------
-  const socket = io();
-
-  socket.on('card_catalog', ({ cards, taken }) => {
-    catalog = cards;
-    takenIds = new Set(taken);
-    buildPickGrid();
-  });
-
-  socket.on('card_catalog_update', ({ taken }) => {
-    takenIds = new Set(taken);
-    refreshTakenStyles();
-  });
-
-  socket.on('wallet_update', ({ balance }) => { statBalance.textContent = balance; });
-
-  socket.on('card_selected', ({ cardId, grid }) => {
-    closePicker();
-    renderMyCard(cardId, grid);
-    toast(`ካርቴላ #${cardId} ገዝተዋል!`);
-  });
-
-  socket.on('card_rejected', ({ reason }) => { rejectMsg.textContent = reason; });
-
-  socket.on('bingo_rejected', ({ reason }) => toast(`❌ ${reason}`));
-
-  socket.on('round_reset', () => {
-    clearMyCard();
-    takenIds = new Set();
-    refreshTakenStyles();
-  });
-
-  socket.on('game_state', (state) => {
-    statGameId.textContent = state.gameId ?? '—';
-    statPlayers.textContent = state.playerCount ?? 0;
-    statCardsSold.textContent = state.cardsSold ?? 0;
-    statBet.textContent = state.bet ?? '—';
-    statDerash.textContent = state.derash ?? '—';
-
-    lastCalledNumbers = state.calledNumbers || [];
-    paintCalled(lastCalledNumbers);
-    paintRecent(lastCalledNumbers);
-    markMyCard(lastCalledNumbers);
-
-    bingoBtn.disabled = !(state.phase === 'playing' && myCardId);
-
-    if (state.phase === 'waiting'){
-      showCountdown(state.countdownValue ?? 30);
-      if (!myCardId) openPicker();
-    } else if (state.phase === 'playing'){
-      closePicker();
-      showCall(lastCalledNumbers.slice(-1)[0]);
-    } else if (state.phase === 'finished'){
-      showFinished();
-    }
-  });
-
-  socket.on('countdown_tick', ({ secondsLeft, derash, cardsSold }) => {
-    showCountdown(Math.max(secondsLeft, 0));
-    if (derash !== undefined) statDerash.textContent = derash;
-    if (cardsSold !== undefined) statCardsSold.textContent = cardsSold;
-  });
-
-  socket.on('game_started', ({ derash, cardsSold }) => {
-    closePicker();
-    if (derash !== undefined) statDerash.textContent = derash;
-    if (cardsSold !== undefined) statCardsSold.textContent = cardsSold;
-    bingoBtn.disabled = !myCardId;
-  });
-
-  socket.on('number_called', (data) => {
-    showCall(data.number);
-    lastCalledNumbers = data.calledNumbers;
-    paintCalled(lastCalledNumbers);
-    paintRecent(lastCalledNumbers);
-    markMyCard(lastCalledNumbers);
-
-    if (data.audioFile && !muted && auto){
-      caller.src = data.audioFile;
-      caller.play().catch(() => {});
-    }
-  });
-
-  socket.on('round_won', ({ winnerId, payout, cardId }) => {
-    bingoBtn.disabled = true;
-    if (winnerId === socket.id){
-      winTitle.textContent = 'እንኳን ደስ አለዎት! 🎉';
-      winSub.textContent = `በካርቴላ #${cardId} ${payout} ብር አሸንፈዋል!`;
-    } else {
-      winTitle.textContent = 'ጨዋታው አልቋል';
-      winSub.textContent = `ሌላ ተጫዋች #${cardId} ካርቴላ ላይ ${payout} ብር አሸንፏል።`;
-    }
-    winOverlay.classList.add('show');
-  });
-  document.getElementById('winCloseBtn').addEventListener('click', () => winOverlay.classList.remove('show'));
-
-  socket.on('game_over', () => showFinished());
-</script>
+            setTimeout(() => {
+                resultText.innerText = "እንኳን ደስ አለዎት! 10 ነጥብ አሸንፈዋል! 🎉";
+                // ውጤቱን ወደ ቦት ወይም ዳታቤዝ መላክ ይቻላል
+            }, 4000);
+        }
+    </script>
 </body>
 </html>
