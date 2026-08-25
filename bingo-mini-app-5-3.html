@@ -5,963 +5,346 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ቢንጎ</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+Ethiopic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://bingo-mini-app-0qh7.onrender.com/socket.io/socket.io.js"></script>
 <style>
   :root{
-    --bg-deep:#210a0f; --bg-deep-2:#33121a; --bg-panel:#3d1620; --bg-panel-hi:#4a1c28; --line:#5a2530;
-    --accent-orange:#f2954a; --accent-orange-hi:#ffb066; --accent-gold:#e8b94a;
-    --text-cream:#f6e9dc; --text-muted:#c9a79c; --text-dim:#937270;
-    --ok-green:#4fae7f; --danger:#d9634a;
-    --radius-lg:22px; --radius-md:14px; --radius-sm:9px;
-    --font-num:'Space Grotesk', sans-serif; --font-am:'Noto Sans Ethiopic', sans-serif;
+    --bg1:#1c1140; --bg2:#2b1a5e; --bg3:#150c30;
+    --gold:#f5c542; --gold-dim:#8a6d1f;
+    --cell:#e0501f; --cell2:#c94418;
+    --called:#2b1740; --called-border:#7a5bd6;
+    --green:#18b673; --blue:#3a63e0;
+    --text:#f4f0ff; --text-dim:#b9aee0;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{
-    margin:0; padding:0; height:100%;
-    background:radial-gradient(120% 60% at 50% -10%, #4a1c28 0%, transparent 60%), linear-gradient(180deg, var(--bg-deep) 0%, #170609 100%);
-    color:var(--text-cream); font-family:var(--font-am); overscroll-behavior:none; -webkit-font-smoothing:antialiased;
+  html,body{margin:0;padding:0;height:100%;font-family:'Segoe UI',system-ui,sans-serif;}
+  body{
+    background:
+      radial-gradient(circle at 20% 0%, #3a2470 0%, transparent 55%),
+      radial-gradient(circle at 100% 100%, #241455 0%, transparent 50%),
+      linear-gradient(180deg, var(--bg1), var(--bg3));
+    color:var(--text); min-height:100vh; overflow-x:hidden;
   }
-  #app{max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:env(safe-area-inset-bottom); position:relative;}
-  .tibeb{height:10px; width:100%; flex:0 0 auto;
-    background:repeating-linear-gradient(135deg, var(--accent-orange) 0 6px, var(--accent-gold) 6px 12px, transparent 12px 14px, transparent 14px 20px); opacity:.9;}
-  .tibeb.bottom{margin-top:auto;}
-  header.top{padding:18px 20px 10px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
-  .brand{display:flex; align-items:center; gap:10px;}
-  .brand .mark{width:38px; height:38px; border-radius:11px; background:conic-gradient(from 220deg, var(--accent-orange), var(--accent-gold), var(--accent-orange));
-    display:flex; align-items:center; justify-content:center; font-family:var(--font-num); font-weight:700; color:#2a0d12; font-size:18px;
-    box-shadow:0 4px 14px rgba(242,149,74,.35);}
-  .brand h1{font-size:17px; margin:0; letter-spacing:.2px; font-weight:700;}
-  .brand p{margin:1px 0 0; font-size:11.5px; color:var(--text-dim);}
-  .points-pill{display:flex; align-items:center; gap:6px; background:var(--bg-panel); border:1px solid var(--line); padding:7px 12px; border-radius:999px;}
-  .points-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-gold);}
-  .points-pill span.n{font-family:var(--font-num); font-weight:600; color:var(--accent-gold); font-size:14px;}
-  main{flex:1; padding:6px 20px 28px; display:flex; flex-direction:column;}
+  .screen{display:none; padding:16px 14px 90px; max-width:480px; margin:0 auto;}
+  .screen.active{display:block;}
 
-  /* ---- WALLETS ---- */
-  .wallets-row{display:flex; align-items:center; gap:6px;}
-  .wallet-pill{display:flex; flex-direction:column; align-items:flex-end; background:var(--bg-panel); border:1px solid var(--line); padding:5px 10px; border-radius:12px; cursor:pointer;}
-  .wallet-pill .wl{font-size:9px; color:var(--text-dim);}
-  .wallet-pill .wn{font-family:var(--font-num); font-weight:700; font-size:13px; color:var(--accent-gold);}
-  .wallet-pill.main .wn{color:var(--text-cream);}
-  .wallet-add-btn{width:26px; height:26px; border-radius:50%; border:none; background:linear-gradient(135deg, var(--accent-gold), var(--accent-orange)); color:#26100b; font-weight:700; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:0 0 auto;}
+  /* header */
+  .topbar{display:flex; align-items:center; gap:10px; padding:6px 2px 14px;}
+  .logo{width:38px;height:38px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#ffd76b,#e0501f);
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:#2b1140;font-size:18px;
+    box-shadow:0 0 0 2px var(--gold), 0 4px 10px rgba(0,0,0,.4);}
+  .brand{font-size:19px;font-weight:800;letter-spacing:.3px;}
+  .brand span{color:var(--gold);}
 
-  .modal-overlay{position:absolute; inset:0; background:rgba(15,4,6,.86); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:50; padding:20px;}
-  .modal-overlay.show{display:flex;}
-  .modal-card{width:100%; max-width:360px; max-height:88vh; overflow-y:auto; background:linear-gradient(180deg, var(--bg-panel-hi), var(--bg-deep-2)); border:1px solid var(--line); border-radius:18px; padding:20px;}
-  .modal-card h3{margin:0 0 4px; font-size:16px; color:var(--accent-gold);}
-  .modal-card .msub{margin:0 0 16px; font-size:11.5px; color:var(--text-dim); line-height:1.6;}
-  .modal-tabs{display:flex; gap:6px; margin-bottom:14px; background:var(--bg-panel); border-radius:999px; padding:3px;}
-  .modal-tabs button{flex:1; border:none; background:transparent; color:var(--text-muted); font-family:var(--font-am); font-size:12.5px; font-weight:600; padding:8px 4px; border-radius:999px; cursor:pointer;}
-  .modal-tabs button.active{background:linear-gradient(135deg, var(--accent-gold), var(--accent-orange)); color:#26100b;}
-  .modal-pane{display:none;}
-  .modal-pane.active{display:block;}
-  .field{margin-bottom:12px;}
-  .field label{display:block; font-size:11.5px; color:var(--text-muted); margin-bottom:5px;}
-  .field input, .field select{width:100%; background:var(--bg-panel); border:1px solid var(--line); border-radius:10px; padding:11px 12px; color:var(--text-cream); font-family:var(--font-num); font-size:13.5px;}
-  .field input::placeholder{color:var(--text-dim); font-family:var(--font-am); font-size:12px;}
-  .modal-submit{width:100%; padding:13px; border:none; border-radius:11px; background:linear-gradient(135deg, var(--accent-gold), var(--accent-orange)); color:#26100b; font-family:var(--font-am); font-weight:700; font-size:14px; cursor:pointer; margin-top:2px;}
-  .modal-close{width:100%; padding:11px; border:1px solid var(--line); background:transparent; color:var(--text-muted); border-radius:11px; font-family:var(--font-am); font-size:13px; cursor:pointer; margin-top:8px;}
-  .verify-note{font-size:10.5px; color:var(--text-dim); line-height:1.6; margin-top:10px; padding:8px 10px; background:var(--bg-panel); border-radius:9px; border:1px solid var(--line);}
-  .deposit-log{margin-top:14px;}
-  .deposit-log .dl-title{font-size:11px; color:var(--text-dim); margin-bottom:6px;}
-  .dl-item{display:flex; align-items:center; justify-content:space-between; padding:8px 10px; background:var(--bg-panel); border-radius:9px; margin-bottom:6px; font-size:11.5px;}
-  .dl-item .dl-amt{font-family:var(--font-num); font-weight:700;}
-  .dl-item .dl-status{font-size:10px; font-weight:700; padding:3px 8px; border-radius:999px;}
-  .dl-status.ok{background:rgba(79,174,127,.18); color:var(--ok-green);}
-  .dl-status.bad{background:rgba(217,99,74,.18); color:var(--danger);}
-  .transfer-row{display:flex; gap:8px; margin-bottom:12px;}
-  .transfer-row button{flex:1; padding:9px 4px; border-radius:10px; border:1px solid var(--line); background:var(--bg-panel); color:var(--text-muted); font-family:var(--font-am); font-size:11.5px; cursor:pointer;}
-  .transfer-row button.active{background:var(--accent-orange); color:#26100b; border-color:transparent; font-weight:700;}
+  /* wallet strip */
+  .wallet-row{display:flex; gap:8px; margin-bottom:16px;}
+  .wallet-chip{flex:1; background:linear-gradient(160deg,#2c1c5c,#1c1140); border:1px solid #4b3496;
+    border-radius:14px; padding:10px 8px; text-align:center;}
+  .wallet-chip .label{font-size:11px; color:var(--text-dim); margin-bottom:2px;}
+  .wallet-chip .value{font-size:18px; font-weight:800; color:var(--gold);}
 
-  .hero{text-align:center; padding:26px 6px 8px;}
-  .hero .eyebrow{font-size:11.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent-orange-hi); font-weight:600; margin-bottom:8px;}
-  .hero h2{font-size:26px; line-height:1.25; margin:0; font-weight:700;}
-  .hero h2 .hl{color:var(--accent-orange);}
-  .stake-card{margin-top:22px; background:linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-deep-2) 100%); border:1px solid var(--line); border-radius:var(--radius-lg); padding:18px 16px 20px;}
-  .stake-card h3{margin:0 0 14px; font-size:13.5px; color:var(--text-muted); font-weight:600; display:flex; align-items:center; gap:8px;}
-  .stake-card h3::before{content:"▸"; color:var(--accent-orange);}
-  .stake-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-  .stake-btn{border:none; cursor:pointer; padding:16px 8px; border-radius:var(--radius-md); font-family:var(--font-am); font-weight:700; font-size:15px; color:#1c0a0e;
-    display:flex; flex-direction:column; align-items:center; gap:3px; transition:transform .12s ease;}
-  .stake-btn .amt{font-family:var(--font-num); font-size:19px; font-weight:700;}
-  .stake-btn:active{transform:scale(.96);}
-  .stake-btn.s10{background:linear-gradient(135deg, #ffd28a, var(--accent-orange));}
-  .stake-btn.s20{background:linear-gradient(135deg, var(--accent-gold), #d99a3a);}
-  .stats-row{margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-  .stat{background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius-md); padding:14px 10px; text-align:center;}
-  .stat .n{font-family:var(--font-num); font-weight:700; font-size:20px; color:var(--accent-orange-hi);}
-  .stat .l{font-size:11px; color:var(--text-dim); margin-top:3px;}
-  .nav-links{margin-top:16px; display:flex; gap:8px;}
-  .nav-links a{flex:1; text-align:center; padding:11px 6px; font-size:12.5px; color:var(--text-muted); background:transparent; border:1px solid var(--line); border-radius:var(--radius-sm); text-decoration:none;}
+  h1.hero{font-size:26px; text-align:center; margin:6px 0 4px; font-weight:800;}
+  h1.hero span{color:var(--gold);}
+  p.sub{text-align:center; color:var(--text-dim); font-size:13px; margin:0 0 20px;}
 
-  .screen{display:none;}
-  .screen.active{display:flex; flex-direction:column; flex:1;}
-  .subbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
-  .backbtn{display:flex; align-items:center; gap:6px; background:none; border:none; color:var(--text-muted); font-family:var(--font-am); font-size:13.5px; cursor:pointer; padding:6px 2px;}
-  .timer-chip{font-family:var(--font-num); font-weight:700; font-size:14px; background:var(--bg-panel); border:1px solid var(--accent-orange); color:var(--accent-orange-hi); padding:6px 12px; border-radius:999px;}
+  .stake-box{background:linear-gradient(160deg,rgba(245,197,66,.12),rgba(245,197,66,.02));
+    border:1px solid var(--gold-dim); border-radius:18px; padding:16px; margin-bottom:18px;}
+  .stake-box .title{display:flex; align-items:center; gap:6px; color:var(--gold); font-weight:700; margin-bottom:12px; font-size:14px;}
+  .stake-btn{width:100%; border:none; border-radius:12px; padding:16px; font-size:17px; font-weight:800;
+    color:#fff; margin-bottom:10px; display:flex; align-items:center; justify-content:center; gap:8px;
+    box-shadow:0 6px 14px rgba(0,0,0,.35); cursor:pointer;}
+  .stake-btn.a{background:linear-gradient(90deg,#18b673,#0d8a58);}
+  .stake-btn.b{background:linear-gradient(90deg,#3a63e0,#1f3fae);}
+  .stake-btn.c{background:linear-gradient(90deg,#e0501f,#b93c12);}
 
-  /* ---- CARD SELECT (pool of 600) ---- */
-  .pick-hint{font-size:12px; color:var(--text-muted); text-align:center; margin-bottom:10px; line-height:1.6;}
-  .held-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
-  .held-label{font-size:12.5px; color:var(--text-muted);}
-  .held-count{font-family:var(--font-num); font-weight:700; color:var(--accent-gold);}
-  .held-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; min-height:30px;}
-  .held-chip{display:flex; align-items:center; gap:6px; background:linear-gradient(135deg, var(--accent-orange-hi), var(--accent-orange)); color:#26100b;
-    font-family:var(--font-num); font-weight:700; font-size:12.5px; padding:6px 8px 6px 12px; border-radius:999px;}
-  .held-chip button{border:none; background:rgba(0,0,0,.18); color:#26100b; width:18px; height:18px; border-radius:50%; font-size:11px; cursor:pointer; line-height:1;}
+  .stats-row{display:flex; gap:10px; margin-top:6px;}
+  .stat-card{flex:1; background:#1c1140; border:1px solid #3a2670; border-radius:14px; padding:14px 8px; text-align:center;}
+  .stat-card .num{font-size:20px; font-weight:800; color:var(--gold);}
+  .stat-card .lab{font-size:11px; color:var(--text-dim); margin-top:2px;}
 
-  .preview-wrap{background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius-md); padding:10px; margin-bottom:14px;}
-  .preview-wrap .ptitle{font-size:11.5px; color:var(--text-dim); text-align:center; margin-bottom:8px;}
-  .preview-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:4px;}
-  .preview-grid .ph{text-align:center; font-family:var(--font-num); font-weight:700; font-size:11px; border-radius:5px; padding:3px 0; color:#26100b;}
-  .preview-grid .ph.B{background:var(--accent-orange-hi);} .preview-grid .ph.I{background:#e59a6b;} .preview-grid .ph.N{background:var(--accent-gold);}
-  .preview-grid .ph.G{background:var(--ok-green); color:#0d2417;} .preview-grid .ph.O{background:#e2794a;}
-  .preview-grid .pc{aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:6px; font-family:var(--font-num); font-size:11px; font-weight:600; background:var(--bg-panel-hi); color:var(--text-cream);}
-  .preview-grid .pc.free{background:var(--accent-gold); color:#26100b; font-size:9px;}
-  .preview-empty{text-align:center; color:var(--text-dim); font-size:12px; padding:14px 0;}
+  /* cartela / picker screen */
+  .picker-top{display:flex; gap:10px; margin-bottom:12px;}
+  .pill{flex:1; background:#221351; border:1px solid #4b3496; border-radius:12px; padding:8px 10px; text-align:center;}
+  .pill .l{font-size:10px; color:var(--text-dim);}
+  .pill .v{font-size:16px; font-weight:800;}
+  .timer-pill{background:linear-gradient(160deg,#e0501f,#a8330f); min-width:64px;}
+  .timer-pill .v{color:#fff;}
 
-  .pool-grid{display:grid; grid-template-columns:repeat(8, 1fr); gap:5px; overflow-y:auto; max-height:340px; padding-right:2px;}
-  .pool-cell{aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:7px;
-    font-family:var(--font-num); font-size:10.5px; font-weight:600; background:var(--bg-panel); color:var(--text-muted); border:1px solid var(--line); cursor:pointer;}
-  .pool-cell.chosen{background:linear-gradient(135deg, var(--accent-orange-hi), var(--accent-orange)); color:#26100b; border-color:transparent; font-weight:700;}
-  .pool-cell.locked{opacity:.3; pointer-events:none;}
+  .grid{display:grid; grid-template-columns:repeat(8,1fr); gap:7px;}
+  .cell{aspect-ratio:1; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:15px; color:#fff; background:linear-gradient(160deg,var(--cell),var(--cell2));
+    box-shadow:0 3px 6px rgba(0,0,0,.35); border:2px solid transparent; cursor:pointer; user-select:none;}
+  .cell.taken{background:var(--called); border-color:var(--called-border); color:var(--text-dim);}
+  .cell.selected{border-color:var(--gold); box-shadow:0 0 0 2px var(--gold), 0 3px 10px rgba(245,197,66,.5);}
 
-  .confirm-bar{margin-top:14px;}
-  .confirm-btn{width:100%; padding:15px; border:none; border-radius:var(--radius-md); background:linear-gradient(135deg, var(--accent-gold), var(--accent-orange)); color:#26100b; font-family:var(--font-am); font-weight:700; font-size:15px; cursor:pointer;}
+  .confirm-bar{position:fixed; left:0; right:0; bottom:0; padding:12px 14px 18px; background:linear-gradient(0deg,var(--bg3) 60%, transparent);}
+  .confirm-btn{max-width:452px; margin:0 auto; display:block; width:100%; border:none; border-radius:14px; padding:16px;
+    font-size:17px; font-weight:800; color:#2b1140; background:linear-gradient(90deg,var(--gold),#e0a92f);
+    box-shadow:0 6px 16px rgba(245,197,66,.35); cursor:pointer;}
   .confirm-btn:disabled{opacity:.4;}
 
-  .toast{position:absolute; left:50%; bottom:26px; transform:translateX(-50%) translateY(10px); background:var(--bg-panel-hi); border:1px solid var(--accent-orange);
-    color:var(--text-cream); font-size:12.5px; padding:9px 16px; border-radius:999px; opacity:0; transition:opacity .2s ease, transform .2s ease; z-index:30; white-space:nowrap;}
-  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  /* game screen */
+  .game-top{display:flex; gap:6px; margin-bottom:12px;}
+  .g-chip{flex:1; background:#221351; border:1px solid #4b3496; border-radius:12px; padding:7px 4px; text-align:center;}
+  .g-chip .l{font-size:9px; color:var(--text-dim);}
+  .g-chip .v{font-size:14px; font-weight:800; color:var(--gold);}
 
-  /* ---- GAME ---- */
-  .game-top{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:12px;}
-  .game-stat{background:var(--bg-panel); border:1px solid var(--line); border-radius:10px; padding:8px 4px; text-align:center;}
-  .game-stat .l{font-size:9.5px; color:var(--text-dim);}
-  .game-stat .v{font-family:var(--font-num); font-weight:700; font-size:13px; margin-top:2px;}
+  .layout{display:flex; gap:10px;}
+  .board{flex:1.15;}
+  .letters{display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-bottom:5px;}
+  .letter{text-align:center; font-weight:800; border-radius:8px; padding:6px 0; color:#fff; font-size:13px;}
+  .letter.B{background:#3a63e0;} .letter.I{background:#7a4fe0;} .letter.N{background:#c23fd6;}
+  .letter.G{background:#18b673;} .letter.O{background:#e0501f;}
+  .numcol{display:grid; grid-template-columns:repeat(5,1fr); gap:5px;}
+  .num{aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:7px;
+    font-size:12px; font-weight:700; background:#241455; color:var(--text-dim); border:1px solid #3a2670;}
+  .num.called{background:linear-gradient(160deg,var(--gold),#c99b1f); color:#2b1140; border-color:var(--gold);}
+  .num.marked{background:linear-gradient(160deg,var(--green),#0d8a58); color:#fff; border-color:var(--green);}
 
-  .call-row{display:flex; align-items:center; gap:12px; margin-bottom:14px;}
-  .call-ball-wrap{position:relative; width:70px; height:70px; flex:0 0 auto;}
-  .call-ball-wrap .tibeb-ring{position:absolute; inset:-5px; border-radius:50%;
-    background:repeating-conic-gradient(var(--accent-orange) 0 8deg, var(--accent-gold) 8deg 16deg);
-    -webkit-mask:radial-gradient(closest-side, transparent 74%, #000 76%); mask:radial-gradient(closest-side, transparent 74%, #000 76%);}
-  .call-ball{position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle at 35% 30%, #fff6e8, var(--text-cream) 55%, #d8c3b3 100%);
-    display:flex; align-items:center; justify-content:center; flex-direction:column; box-shadow:0 6px 16px rgba(0,0,0,.45);}
-  .call-ball .letter{font-family:var(--font-num); font-weight:700; font-size:10px; color:var(--accent-orange);}
-  .call-ball .digit{font-family:var(--font-num); font-weight:700; font-size:21px; color:#26100b; margin-top:-2px;}
-  .history-strip{flex:1; display:flex; gap:5px; overflow-x:auto; padding:4px 2px;}
-  .history-strip::-webkit-scrollbar{display:none;}
-  .hist-chip{flex:0 0 auto; font-family:var(--font-num); font-weight:700; font-size:11px; background:var(--bg-panel); border:1px solid var(--line); color:var(--text-muted); padding:5px 8px; border-radius:999px;}
-  .hist-chip.latest{background:var(--accent-gold); color:#26100b; border-color:transparent;}
+  .side{flex:1; display:flex; flex-direction:column; gap:10px;}
+  .call-panel{background:linear-gradient(160deg,#241455,#150c30); border:1px solid #4b3496; border-radius:16px; padding:14px; text-align:center;}
+  .call-panel .lastcall{font-size:13px; color:var(--text-dim); margin-bottom:6px;}
+  .ball{width:96px; height:96px; margin:0 auto; border-radius:50%; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; background:radial-gradient(circle at 35% 30%,#fff,#f5c542 55%,#c99b1f);
+    color:#2b1140; font-weight:900; box-shadow:0 0 0 4px rgba(245,197,66,.25), 0 8px 20px rgba(0,0,0,.4);}
+  .ball .bl{font-size:14px;} .ball .bn{font-size:26px; line-height:1;}
 
-  .cards-stack{display:flex; flex-direction:column; gap:14px;}
-  .cards-stack.two-up{display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:start;}
-  .cards-stack.two-up .card-block{padding:7px;}
-  .cards-stack.two-up .my-card .cell{font-size:10.5px;}
-  .cards-stack.two-up .my-card .head{font-size:10px; padding:4px 0;}
-  .card-block{background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius-md); padding:10px;}
-  .card-block .clabel{font-family:var(--font-num); font-weight:700; font-size:12px; color:var(--accent-orange-hi); text-align:center; margin-bottom:2px;}
-  .card-block .cplayer{font-family:var(--font-num); font-weight:600; font-size:10px; color:var(--text-dim); text-align:center; margin-bottom:8px;}
-  .my-card{display:grid; grid-template-columns:repeat(5,1fr); gap:5px;}
-  .my-card .head{text-align:center; font-family:var(--font-num); font-weight:700; font-size:12px; border-radius:6px; padding:5px 0; color:#26100b;}
-  .my-card .head.B{background:var(--accent-orange-hi);} .my-card .head.I{background:#e59a6b;} .my-card .head.N{background:var(--accent-gold);}
-  .my-card .head.G{background:var(--ok-green); color:#0d2417;} .my-card .head.O{background:#e2794a;}
-  .my-card .cell{aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:8px; font-family:var(--font-num); font-size:12.5px; font-weight:700;
-    background:var(--bg-panel-hi); color:var(--text-cream); border:1px solid var(--line); transition:background .25s ease, transform .2s ease;}
-  .my-card .cell.free{background:var(--accent-gold); color:#26100b; border-color:transparent; font-size:10px;}
-  .my-card .cell.marked{background:var(--ok-green); color:#0d2417; border-color:transparent;}
-  .my-card .cell.pulse{transform:scale(1.08); box-shadow:0 0 0 3px var(--accent-orange-hi);}
-  .my-card .cell.win{background:var(--accent-orange); color:#26100b; box-shadow:0 0 0 3px var(--accent-gold);}
+  .mycard-wrap{background:#150c30; border:1px solid #3a2670; border-radius:14px; padding:10px;}
+  .mycard-wrap .t{font-size:11px; color:var(--text-dim); text-align:center; margin-bottom:8px;}
 
-  .auto-row{margin-top:14px; width:100%; display:flex; align-items:center; justify-content:space-between; background:var(--bg-panel); border:1px solid var(--line); border-radius:999px; padding:9px 14px;}
-  .auto-row span{font-size:12.5px; color:var(--text-muted);}
-  .switch{width:38px; height:22px; border-radius:999px; background:var(--ok-green); position:relative; flex:0 0 auto; cursor:pointer;}
-  .switch::after{content:""; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:3px; right:3px; transition:right .15s ease;}
-  .switch.off{background:#5a2530;} .switch.off::after{right:19px;}
-  .watch-note{text-align:center; color:var(--text-dim); font-size:11px; line-height:1.6; margin-top:10px; padding:0 4px;}
-  .game-actions{margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px;}
-  .game-actions button{border:none; border-radius:11px; padding:12px 4px; font-family:var(--font-am); font-weight:700; font-size:13px; cursor:pointer;}
-  .act-leave{background:var(--danger); color:#fff;}
-  .act-sound{background:var(--bg-panel-hi); color:var(--text-cream); border:1px solid var(--line) !important;}
+  .action-row{display:flex; gap:8px; margin-top:auto;}
+  .action-btn{flex:1; border:none; border-radius:12px; padding:13px 4px; font-weight:800; font-size:13px; color:#fff; cursor:pointer;}
+  .action-btn.bingo{background:linear-gradient(90deg,var(--gold),#e0a92f); color:#2b1140;}
+  .action-btn.leave{background:linear-gradient(90deg,#c94418,#8f2d0e);}
 
-  .win-overlay{position:absolute; inset:0; background:rgba(15,4,6,.86); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:40; padding:24px;}
-  .win-overlay.show{display:flex;}
-  .win-card{background:linear-gradient(180deg, var(--bg-panel-hi), var(--bg-deep-2)); border:1px solid var(--accent-gold); border-radius:20px; padding:30px 26px; text-align:center; max-width:320px;}
-  .win-card .trophy{font-size:44px;}
-  .win-card h2{margin:10px 0 4px; font-size:22px; color:var(--accent-gold);}
-  .win-card p{color:var(--text-muted); font-size:13px; margin:0 0 18px;}
-  .win-card button{border:none; padding:12px 26px; border-radius:11px; font-family:var(--font-am); font-weight:700; background:linear-gradient(135deg, var(--accent-gold), var(--accent-orange)); color:#26100b; cursor:pointer;}
-  ::selection{background:var(--accent-orange); color:#26100b;}
+  .msg{position:fixed; top:14px; left:50%; transform:translateX(-50%); background:#2b1140; border:1px solid var(--gold);
+    color:var(--text); padding:10px 18px; border-radius:12px; font-size:13px; font-weight:700; z-index:50; display:none;
+    box-shadow:0 6px 16px rgba(0,0,0,.4);}
+
+  .winner-overlay{position:fixed; inset:0; background:rgba(10,5,25,.85); display:none; align-items:center; justify-content:center; z-index:60;}
+  .winner-card{background:linear-gradient(160deg,#2c1c5c,#150c30); border:2px solid var(--gold); border-radius:20px;
+    padding:30px 24px; text-align:center; max-width:320px;}
+  .winner-card .t1{font-size:40px;} .winner-card .t2{font-size:20px; font-weight:800; color:var(--gold); margin:8px 0;}
+  .winner-card .t3{font-size:14px; color:var(--text-dim); margin-bottom:18px;}
 </style>
 </head>
 <body>
-<div id="app">
-  <div class="tibeb"></div>
 
-  <!-- HOME -->
-  <div class="screen active" id="screen-home">
-    <header class="top">
-      <div class="brand"><div class="mark">ቢ</div><div><h1>የቤተሰብ ቢንጎ</h1><p>75-ball · ብር-ተኮር ጨዋታ</p></div></div>
-      <div class="wallets-row">
-        <div class="wallet-pill main" onclick="openWalletModal('transfer')"><span class="wl">ዋና ቦርሳ</span><span class="wn" id="mainWallet">0</span></div>
-        <div class="wallet-pill" onclick="openWalletModal('deposit')"><span class="wl">ጨዋታ ቦርሳ</span><span class="wn" id="pointsBalance">120</span></div>
-        <button class="wallet-add-btn" onclick="openWalletModal('deposit')" aria-label="ገንዘብ ጨምር">+</button>
-      </div>
-    </header>
-    <main>
-      <div class="hero"><div class="eyebrow">እንኳን ደህና መጡ</div><h2>ዛሬ <span class="hl">ቢንጎ</span> ለመጫወት<br>ዝግጁ ነዎት?</h2></div>
-      <div class="stake-card">
-        <h3>ደረጃዎን ይምረጡ</h3>
-        <div class="stake-grid">
-          <button class="stake-btn s10" onclick="goToCard(10)"><span class="amt">10</span><span>ብር ተጫወት</span></button>
-          <button class="stake-btn s20" onclick="goToCard(20)"><span class="amt">20</span><span>ብር ተጫወት</span></button>
-        </div>
-      </div>
-      <div class="stats-row">
-        <div class="stat"><div class="n">45,000+</div><div class="l">ንቁ ተጫዋቾች</div></div>
-        <div class="stat"><div class="n">60,000+</div><div class="l">የተጫወቱ ጨዋታዎች</div></div>
-      </div>
-      <div class="nav-links"><a href="#">ታሪክ</a><a href="#">ህግጋት</a><a href="#">ድጋፍ</a></div>
-    </main>
+<div class="msg" id="msg"></div>
+
+<!-- SCREEN 1: HOME / STAKE -->
+<div class="screen active" id="screenHome">
+  <div class="topbar">
+    <div class="logo">B</div>
+    <div class="brand">Betesab <span>Bingo</span></div>
   </div>
 
-  <!-- CARD SELECT -->
-  <div class="screen" id="screen-card">
-    <header class="top" style="padding-bottom:0;">
-      <div class="brand"><div class="mark">ቢ</div><div><h1 style="font-size:15px;">ካርድ ይምረጡ</h1></div></div>
-    </header>
-    <main>
-      <div class="subbar">
-        <button class="backbtn" onclick="showScreen('home')">← ተመለስ</button>
-        <div class="timer-chip"><span id="countdown">30</span> ሰ</div>
-      </div>
-      <div class="pick-hint">ከ1 እስከ 600 ካሉት ካርዶች ውስጥ <b>እስከ 2 ካርድ</b> ብቻ መያዝ ይችላሉ</div>
-
-      <div class="held-row"><span class="held-label">የያዙት ካርድ</span><span class="held-count"><span id="heldCount">0</span>/2</span></div>
-      <div class="held-chips" id="heldChips"></div>
-
-      <div class="preview-wrap">
-        <div class="ptitle" id="previewTitle">ካርድ ይንኩ ቅድመ-እይታ ለማየት</div>
-        <div class="preview-grid" id="previewGrid"></div>
-      </div>
-
-      <div class="pool-grid" id="poolGrid"></div>
-
-      <div class="confirm-bar">
-        <button class="confirm-btn" id="confirmBtn" onclick="lockSelection()" disabled>ጨዋታ ጀምር</button>
-      </div>
-      <div class="toast" id="toast"></div>
-    </main>
+  <div class="wallet-row">
+    <div class="wallet-chip"><div class="label">ሂሳብ</div><div class="value" id="walletMain">0</div></div>
+    <div class="wallet-chip"><div class="label">Play Wallet</div><div class="value" id="walletPlay">0</div></div>
   </div>
 
-  <!-- GAME -->
-  <div class="screen" id="screen-game">
-    <header class="top" style="padding-bottom:0;">
-      <button class="backbtn" onclick="leaveGame()">← ውጣ</button>
-      <div class="timer-chip">🎮 <span id="gameId">BBTMGCIU</span></div>
-    </header>
-    <main>
-      <div class="game-top">
-        <div class="game-stat"><div class="l">ተጫዋቾች</div><div class="v" id="gPlayers">94</div></div>
-        <div class="game-stat"><div class="l">ደረጃ</div><div class="v" id="gBet">10</div></div>
-        <div class="game-stat"><div class="l">ደራሽ</div><div class="v" id="gDerash">752</div></div>
-        <div class="game-stat"><div class="l">የተጠራ</div><div class="v" id="gCalled">0</div></div>
-      </div>
-      <div class="call-row">
-        <div class="call-ball-wrap"><div class="tibeb-ring"></div><div class="call-ball"><span class="letter" id="ballLetter">—</span><span class="digit" id="ballDigit">·</span></div></div>
-        <div class="history-strip" id="historyStrip"></div>
-      </div>
+  <h1 class="hero">Welcome to <span>Betesab</span> Bingo</h1>
+  <p class="sub">የምትፈልገውን ስቴክ ምረጥ እና ጨዋታ ጀምር</p>
 
-      <div class="cards-stack" id="cardsStack"></div>
-
-      <div class="auto-row"><span>ራስ-ሰር ጥሪ (Automatic)</span><div class="switch" id="autoSwitch" onclick="toggleAuto()"></div></div>
-      <div class="watch-note">ካርድዎ ላይ ያለ ቁጥር ሲጠራ በራሱ ምልክት ይደረግበታል፣ በድምፅም ይነገራል። መስመር ሲሞላ ራስ-ሰር <b>ቢንጎ!</b> ይባላል።</div>
-
-      <div class="game-actions">
-        <button class="act-leave" onclick="leaveGame()">ውጣ</button>
-        <button class="act-sound" id="soundBtn" onclick="toggleSound()">🔊 ድምፅ</button>
-      </div>
-    </main>
+  <div class="stake-box">
+    <div class="title">▷ Choose Your Stake</div>
+    <button class="stake-btn a" onclick="chooseStake(10)">▷ Play 10</button>
+    <button class="stake-btn b" onclick="chooseStake(20)">▷ Play 20</button>
+    <button class="stake-btn c" onclick="chooseStake(50)">▷ Play 50</button>
   </div>
 
-  <div class="win-overlay" id="winOverlay">
-    <div class="win-card">
-      <div class="trophy">🏆</div>
-      <h2 id="winTitle">ቢንጎ!</h2>
-      <p id="winSub">እንኳን ደስ አለዎት።</p>
-      <button onclick="showScreen('home')">ወደ መነሻ ተመለስ</button>
+  <div class="stats-row">
+    <div class="stat-card"><div class="num" id="statPlayers">–</div><div class="lab">Active Players</div></div>
+    <div class="stat-card"><div class="num" id="statPot">–</div><div class="lab">Total Derash</div></div>
+  </div>
+</div>
+
+<!-- SCREEN 2: CARTELA PICKER -->
+<div class="screen" id="screenPicker">
+  <div class="picker-top">
+    <div class="pill"><div class="l">ስቴክ</div><div class="v" id="pickStake">10</div></div>
+    <div class="pill"><div class="l">የተመረጠ</div><div class="v" id="pickSelected">–</div></div>
+    <div class="pill timer-pill"><div class="l">ጨዋታ በ</div><div class="v" id="pickTimer">–</div></div>
+  </div>
+  <div class="grid" id="cartelaGrid"></div>
+  <div class="confirm-bar">
+    <button class="confirm-btn" id="confirmBtn" disabled onclick="confirmCard()">ካርድ ውሰድ እና ግባ</button>
+  </div>
+</div>
+
+<!-- SCREEN 3: GAME -->
+<div class="screen" id="screenGame">
+  <div class="game-top">
+    <div class="g-chip"><div class="l">Game ID</div><div class="v" id="gGameId">–</div></div>
+    <div class="g-chip"><div class="l">Players</div><div class="v" id="gPlayers">–</div></div>
+    <div class="g-chip"><div class="l">Bet</div><div class="v" id="gBet">–</div></div>
+    <div class="g-chip"><div class="l">Derash</div><div class="v" id="gDerash">–</div></div>
+    <div class="g-chip"><div class="l">Called</div><div class="v" id="gCalled">0</div></div>
+  </div>
+
+  <div class="layout">
+    <div class="board">
+      <div class="letters">
+        <div class="letter B">B</div><div class="letter I">I</div><div class="letter N">N</div>
+        <div class="letter G">G</div><div class="letter O">O</div>
+      </div>
+      <div class="mycard-wrap">
+        <div class="t">የካርድህ ቁጥሮች</div>
+        <div class="numcol" id="myCard"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="call-panel">
+        <div class="lastcall">የመጨረሻ ጥሪ</div>
+        <div class="ball" id="ballDisplay"><div class="bl">–</div><div class="bn">–</div></div>
+      </div>
+      <div class="action-row">
+        <button class="action-btn bingo" onclick="claimBingo()">🏆 BINGO</button>
+        <button class="action-btn leave" onclick="leaveGame()">Leave</button>
+      </div>
     </div>
   </div>
+</div>
 
-  <!-- WALLET MODAL -->
-  <div class="modal-overlay" id="walletModal">
-    <div class="modal-card">
-      <h3>የገንዘብ ቦርሳ</h3>
-      <p class="msub">ገንዘብ ወደ ጨዋታ ቦርሳ ያስገቡ ወይም በዋናና በጨዋታ ቦርሳ መካከል ያዛውሩ።</p>
-      <div class="modal-tabs">
-        <button id="tabDeposit" class="active" onclick="switchWalletTab('deposit')">ገንዘብ ጨምር</button>
-        <button id="tabTransfer" onclick="switchWalletTab('transfer')">ማዛወር</button>
-      </div>
-
-      <!-- DEPOSIT PANE -->
-      <div class="modal-pane active" id="paneDeposit">
-        <div class="verify-note" style="margin-top:0; margin-bottom:12px;">ወደ telebirr ቁጥር <b>0940501400</b> የላኩትን ብር መጠን እና ደረሰኝ ላይ ያለውን ማጣቀሻ ቁጥር ከታች ያስገቡ።</div>
-        <div class="field">
-          <label>የላኩት መጠን (ብር)</label>
-          <input type="number" id="depAmount" placeholder="ለምሳሌ 100" inputmode="decimal">
-        </div>
-        <div class="field">
-          <label>የደረሰኝ ቁጥር / ማጣቀሻ (telebirr)</label>
-          <input type="text" id="depRef" placeholder="ደረሰኝ ላይ ያለውን ቁጥር ያስገቡ">
-        </div>
-        <button class="modal-submit" onclick="submitDeposit()">አረጋግጥ እና ጨምር</button>
-        <div class="verify-note">የላኩት መጠንና ቁጥር ወደ telebirr 0940501400 ከገባው ኦርጅናል ደረሰኝ ጋር ተመሳሳይ ከሆነ ብቻ ወደ ጨዋታ ቦርሳዎ ይታከላል።</div>
-        <div class="deposit-log" id="depositLog" style="display:none;">
-          <div class="dl-title">የቅርብ ጊዜ ግቤቶች</div>
-          <div id="depositLogItems"></div>
-        </div>
-      </div>
-
-      <!-- TRANSFER PANE -->
-      <div class="modal-pane" id="paneTransfer">
-        <div class="transfer-row">
-          <button id="dirMainToPlay" class="active" onclick="setTransferDir('m2p')">ዋና ➜ ጨዋታ</button>
-          <button id="dirPlayToMain" onclick="setTransferDir('p2m')">ጨዋታ ➜ ዋና</button>
-        </div>
-        <div class="field">
-          <label>የሚያዛውሩት መጠን (ብር)</label>
-          <input type="number" id="transferAmount" placeholder="ለምሳሌ 50" inputmode="decimal">
-        </div>
-        <button class="modal-submit" onclick="submitTransfer()">አዛውር</button>
-      </div>
-
-      <button class="modal-close" onclick="closeWalletModal()">ዝጋ</button>
-    </div>
+<div class="winner-overlay" id="winnerOverlay">
+  <div class="winner-card">
+    <div class="t1">🎉🏆🎉</div>
+    <div class="t2" id="winnerName">–</div>
+    <div class="t3">ቢንጎ አሸንፏል!</div>
+    <button class="confirm-btn" style="position:static;" onclick="closeWinner()">እሺ</button>
   </div>
-
-  <div class="tibeb bottom"></div>
 </div>
 
 <script>
-try{
-  const tg = window.Telegram && window.Telegram.WebApp;
-  if(tg){ tg.ready(); tg.expand(); tg.setHeaderColor('#210a0f'); tg.setBackgroundColor('#210a0f'); }
-}catch(e){}
+const tg = window.Telegram ? window.Telegram.WebApp : null;
+if (tg) { tg.ready(); tg.expand(); }
+const playerName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user)
+  ? (tg.initDataUnsafe.user.first_name || 'ተጫዋች') : 'ተጫዋች';
 
-/* ================= AUDIO ================= */
-let audioCtx = null;
-let soundOn = true;
-let maleVoice = null;
+const socket = io("https://bingo-mini-app-0qh7.onrender.com");
+let selectedStake = 10;
+let selectedCartela = null;
+let myCardData = null;
+let markedSet = new Set();
+let calledSet = new Set();
 
-function loadVoices(){
-  if(!('speechSynthesis' in window)) return;
-  const voices = speechSynthesis.getVoices();
-  if(!voices.length) return;
-  const isMaleName = v => /male/i.test(v.name) && !/female/i.test(v.name);
-  const isKnownMale = v => /david|daniel|george|fred|male|guy|liam|mark/i.test(v.name) && !/female/i.test(v.name);
-  maleVoice =
-    voices.find(v => v.lang && v.lang.toLowerCase().startsWith('am') && isMaleName(v)) ||
-    voices.find(v => isMaleName(v)) ||
-    voices.find(v => v.lang && v.lang.toLowerCase().startsWith('am') && isKnownMale(v)) ||
-    voices.find(v => isKnownMale(v)) ||
-    voices.find(v => v.lang && v.lang.toLowerCase().startsWith('am')) ||
-    voices[0];
-}
-if('speechSynthesis' in window){
-  loadVoices();
-  speechSynthesis.onvoiceschanged = loadVoices;
-}
-
-function ensureAudio(){ if(!audioCtx){ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } }
-function playTone(freq, dur, type){
-  if(!soundOn) return;
-  try{
-    ensureAudio();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.16, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.start(); osc.stop(audioCtx.currentTime + dur);
-  }catch(e){}
-}
-function playCallSound(){ playTone(520, .12, 'triangle'); setTimeout(()=>playTone(400,.1,'triangle'), 90); }
-function playWinSound(){ [392,494,587,784].forEach((f,i)=>setTimeout(()=>playTone(f,.22,'square'), i*120)); }
-
-const amUnits = ['','አንድ','ሁለት','ሶስት','አራት','አምስት','ስድስት','ሰባት','ስምንት','ዘጠኝ'];
-const amTeens = ['አስር','አስራ አንድ','አስራ ሁለት','አስራ ሶስት','አስራ አራት','አስራ አምስት','አስራ ስድስት','አስራ ሰባት','አስራ ስምንት','አስራ ዘጠኝ'];
-const amTens  = {2:'ሃያ',3:'ሰላሳ',4:'አርባ',5:'ሃምሳ',6:'ስልሳ',7:'ሰባ'};
-const amLetter = {B:'ቢ', I:'አይ', N:'ኤን', G:'ጂ', O:'ኦ'};
-function amharicNumber(n){
-  if(n < 10) return amUnits[n];
-  if(n < 20) return amTeens[n-10];
-  const t = Math.floor(n/10), u = n%10;
-  return amTens[t] + (u ? ' ' + amUnits[u] : '');
-}
-function speakCall(letter, num){
-  if(!soundOn || !('speechSynthesis' in window)) return;
-  try{
-    const text = amLetter[letter] + ' ' + amharicNumber(num);
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = (maleVoice && maleVoice.lang) || 'am-ET';
-    if(maleVoice) u.voice = maleVoice;
-    u.rate = 0.92; u.pitch = 0.62; u.volume = 1;
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
-  }catch(e){}
-}
-function toggleSound(){
-  soundOn = !soundOn;
-  document.getElementById('soundBtn').textContent = soundOn ? '🔊 ድምፅ' : '🔇 ድምፅ';
-}
-
-/* ================= SHARED STATE ================= */
-const cols = ['B','I','N','G','O'];
-const colRanges = {B:[1,15], I:[16,30], N:[31,45], G:[46,60], O:[61,75]};
-const MAX_CARDS = 2;
-const CARD_POOL_SIZE = 600;
-
-let heldIds = [];              // up to 2 card ids
-let heldCardsData = [];        // [{id, cells:[{letter,num,row,col,marked}]}]
-let called = [];
-let calledNums = new Set();
-let autoOn = true;
-
-/* ================= WALLETS ================= */
-// mainWallet: general holding balance. playWallet (shown as #pointsBalance): stake balance used in-game.
-//
-// Set BACKEND_URL to your deployed backend (see /backend/README.md) to use
-// real, server-verified telebirr deposits. Leave it empty ('') to keep using
-// the local, in-browser simulation — useful for demoing the UI, but NOT a
-// substitute for real verification since anyone could edit the page's JS.
-const BACKEND_URL = ''; // e.g. 'https://your-server.com'
-
-let mainWallet = 0;
-let playWallet = 120;
-let transferDir = 'm2p'; // 'm2p' main->play, 'p2m' play->main
-
-// Simulated record of receipts that actually landed on the telebirr account
-// 0940501400 (as if confirmed by the payment provider). Only used when
-// BACKEND_URL is empty. Once BACKEND_URL is set, the real backend's
-// receipts table (filled by the SMS-forwarder webhook) is the source of truth.
-let TELEBIRR_ACCOUNT = '0940501400';
-let originalReceipts = [
-  { ref: 'TX10029', amount: 100, used: false },
-  { ref: 'TX10030', amount: 50,  used: false }
-];
-let depositLog = [];
-
-function getInitData(){
-  try{ return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || ''; }
-  catch(e){ return ''; }
-}
-
-async function backendCall(path, body){
-  const res = await fetch(BACKEND_URL + path, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(Object.assign({ initData: getInitData() }, body || {}))
-  });
-  const data = await res.json();
-  if(!res.ok || !data.ok) throw data;
-  return data;
-}
-
-// Pulls the player's real balances from the backend on load, when configured.
-async function syncWalletFromBackend(){
-  if(!BACKEND_URL) return;
-  try{
-    const res = await fetch(BACKEND_URL + '/api/wallet?initData=' + encodeURIComponent(getInitData()));
-    const data = await res.json();
-    if(data.ok){ mainWallet = data.main; playWallet = data.play; renderWallets(); }
-  }catch(e){ /* stay on local values if the backend is unreachable */ }
-}
-
-// Adjusts the play wallet through the backend (stake deducted / payout added)
-// when BACKEND_URL is set, so the server — not the page's JS — is the source
-// of truth for real money. Falls back to the local variable otherwise.
-async function adjustPlayWallet(delta, type){
-  if(BACKEND_URL){
-    const data = await backendCall('/api/wallet/adjust', { delta, type });
-    mainWallet = data.main; playWallet = data.play;
-  } else {
-    playWallet += delta;
-  }
-  renderWallets();
-}
-
-function renderWallets(){
-  document.getElementById('mainWallet').textContent = mainWallet;
-  document.getElementById('pointsBalance').textContent = playWallet;
-}
-
-function openWalletModal(tab){
-  switchWalletTab(tab || 'deposit');
-  document.getElementById('walletModal').classList.add('show');
-}
-function closeWalletModal(){
-  document.getElementById('walletModal').classList.remove('show');
-}
-function switchWalletTab(tab){
-  const isDep = tab === 'deposit';
-  document.getElementById('tabDeposit').classList.toggle('active', isDep);
-  document.getElementById('tabTransfer').classList.toggle('active', !isDep);
-  document.getElementById('paneDeposit').classList.toggle('active', isDep);
-  document.getElementById('paneTransfer').classList.toggle('active', !isDep);
-}
-
-function renderDepositLog(){
-  const wrap = document.getElementById('depositLog');
-  const items = document.getElementById('depositLogItems');
-  if(depositLog.length === 0){ wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block';
-  items.innerHTML = '';
-  depositLog.slice().reverse().slice(0,5).forEach(entry=>{
-    const row = document.createElement('div');
-    row.className = 'dl-item';
-    row.innerHTML =
-      '<span class="dl-amt">' + entry.amount + ' ብር · ' + entry.ref + '</span>' +
-      '<span class="dl-status ' + (entry.ok ? 'ok' : 'bad') + '">' + (entry.ok ? 'ተረጋግጧል' : 'አልተመሳሰለም') + '</span>';
-    items.appendChild(row);
-  });
-}
-
-async function submitDeposit(){
-  const amountEl = document.getElementById('depAmount');
-  const refEl = document.getElementById('depRef');
-  const amount = Number(amountEl.value);
-  const ref = refEl.value.trim();
-
-  if(!amount || amount <= 0 || !ref){
-    showToast('መጠንና የደረሰኝ ቁጥር ያስገቡ');
-    return;
-  }
-
-  if(BACKEND_URL){
-    // The backend checks this ref+amount against the receipts table, which is
-    // only ever filled by the SMS-forwarder webhook reading real telebirr
-    // notifications on 0940501400 — so this is a real verification, not a
-    // client-side guess.
-    try{
-      const data = await backendCall('/api/deposit/verify', { ref, amount });
-      mainWallet = data.main; playWallet = data.play;
-      renderWallets();
-      depositLog.push({ ref, amount, ok:true });
-      showToast('ተረጋግጧል — ' + amount + ' ብር ወደ ጨዋታ ቦርሳ ገብቷል');
-      amountEl.value = ''; refEl.value = '';
-    }catch(err){
-      depositLog.push({ ref, amount, ok:false });
-      showToast('ከኦርጅናል ደረሰኝ ጋር አልተመሳሰለም — እባክዎ ደግመው ያረጋግጡ');
-    }
-    renderDepositLog();
-    return;
-  }
-
-  // Local simulation fallback (no BACKEND_URL configured).
-  const match = originalReceipts.find(r => r.ref.toLowerCase() === ref.toLowerCase() && !r.used);
-  if(match && match.amount === amount){
-    match.used = true;
-    playWallet += amount;
-    renderWallets();
-    depositLog.push({ ref, amount, ok:true });
-    showToast('ተረጋግጧል — ' + amount + ' ብር ወደ ጨዋታ ቦርሳ ገብቷል');
-    amountEl.value = ''; refEl.value = '';
-  } else {
-    depositLog.push({ ref, amount, ok:false });
-    showToast('ከኦርጅናል ደረሰኝ ጋር አልተመሳሰለም — እባክዎ ደግመው ያረጋግጡ');
-  }
-  renderDepositLog();
-}
-
-function setTransferDir(dir){
-  transferDir = dir;
-  document.getElementById('dirMainToPlay').classList.toggle('active', dir === 'm2p');
-  document.getElementById('dirPlayToMain').classList.toggle('active', dir === 'p2m');
-}
-
-async function submitTransfer(){
-  const el = document.getElementById('transferAmount');
-  const amount = Number(el.value);
-  if(!amount || amount <= 0){ showToast('የሚያዛውሩትን መጠን ያስገቡ'); return; }
-
-  if(BACKEND_URL){
-    try{
-      const data = await backendCall('/api/wallet/transfer', { direction: transferDir, amount });
-      mainWallet = data.main; playWallet = data.play;
-      renderWallets();
-      el.value = '';
-      showToast('ተዛውሯል');
-    }catch(err){
-      showToast(transferDir === 'm2p' ? 'በዋና ቦርሳዎ በቂ ብር የለም' : 'በጨዋታ ቦርሳዎ በቂ ብር የለም');
-    }
-    return;
-  }
-
-  if(transferDir === 'm2p'){
-    if(amount > mainWallet){ showToast('በዋና ቦርሳዎ በቂ ብር የለም'); return; }
-    mainWallet -= amount; playWallet += amount;
-  } else {
-    if(amount > playWallet){ showToast('በጨዋታ ቦርሳዎ በቂ ብር የለም'); return; }
-    playWallet -= amount; mainWallet += amount;
-  }
-  renderWallets();
-  el.value = '';
-  showToast('ተዛውሯል');
-}
-let autoTimer = null;
-let countdownTimer = null;
-let won = false;
-
-function showScreen(name){
+function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById('screen-'+name).classList.add('active');
-  if(name !== 'game'){ stopAutoCall(); }
+  document.getElementById(id).classList.add('active');
+}
+function toast(t){
+  const m=document.getElementById('msg'); m.textContent=t; m.style.display='block';
+  clearTimeout(window._mt); window._mt=setTimeout(()=>m.style.display='none',2200);
 }
 
-/* ---- seeded card generation so a card # always looks the same ---- */
-function mulberry32(seed){
-  return function(){
-    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-function generateCard(id){
-  const rand = mulberry32(id * 99991 + 12345);
-  const card = {};
-  cols.forEach(c=>{
-    const [lo,hi] = colRanges[c];
-    const pool = [];
-    for(let n=lo;n<=hi;n++) pool.push(n);
-    for(let i=pool.length-1;i>0;i--){ const j = Math.floor(rand()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
-    const count = c === 'N' ? 4 : 5;
-    card[c] = pool.slice(0,count).sort((a,b)=>a-b);
-  });
-  const cells = [];
-  cols.forEach(c=>{
-    const nums = card[c];
-    let ni = 0;
-    for(let r=0;r<5;r++){
-      if(c==='N' && r===2){ cells.push({letter:'N', num:'FREE', row:r, col:c, marked:true}); }
-      else { cells.push({letter:c, num:nums[ni], row:r, col:c, marked:false}); ni++; }
-    }
-  });
-  return cells;
+/* ---------- Screen 1: stake choose ---------- */
+function chooseStake(v){
+  selectedStake = v;
+  document.getElementById('pickStake').textContent = v;
+  buildCartelaGrid();
+  showScreen('screenPicker');
 }
 
-function renderPreviewGrid(container, cells){
-  container.innerHTML = '';
-  cols.forEach(c=>{
-    const h = document.createElement('div');
-    h.className = 'ph ' + c; h.textContent = c;
-    container.appendChild(h);
-  });
-  for(let r=0;r<5;r++){
-    cols.forEach(c=>{
-      const cd = cells.find(x=>x.row===r && x.col===c);
-      const el = document.createElement('div');
-      el.className = 'pc' + (cd.num==='FREE' ? ' free' : '');
-      el.textContent = cd.num;
-      container.appendChild(el);
-    });
-  }
-}
-
-/* ================= HOME -> CARD SELECT ================= */
-function goToCard(stake){
-  document.getElementById('gBet').textContent = stake;
-  heldIds = [];
-  selectionLocked = false;
-  document.getElementById('heldChips').innerHTML = '';
-  document.getElementById('heldCount').textContent = '0';
-  document.getElementById('confirmBtn').disabled = true;
-  document.getElementById('confirmBtn').textContent = 'ጨዋታ ጀምር';
-  document.getElementById('previewTitle').textContent = 'ካርድ ይንኩ ቅድመ-እይታ ለማየት';
-  document.getElementById('previewGrid').innerHTML = '';
-  buildPoolGrid();
-  showScreen('card');
-  startCountdown();
-}
-
-function buildPoolGrid(){
-  const grid = document.getElementById('poolGrid');
+/* ---------- Screen 2: cartela grid (1-100 visual card numbers) ---------- */
+function buildCartelaGrid(){
+  const grid = document.getElementById('cartelaGrid');
   grid.innerHTML = '';
-  const frag = document.createDocumentFragment();
-  for(let id=1; id<=CARD_POOL_SIZE; id++){
-    const cell = document.createElement('div');
-    cell.className = 'pool-cell';
-    cell.textContent = id;
-    cell.dataset.id = id;
-    cell.onclick = ()=>toggleCard(id, cell);
-    frag.appendChild(cell);
+  for(let i=1;i<=96;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.textContent = i;
+    c.dataset.n = i;
+    c.onclick = ()=> selectCartela(i, c);
+    grid.appendChild(c);
   }
-  grid.appendChild(frag);
+}
+function selectCartela(n, el){
+  document.querySelectorAll('.cell.selected').forEach(x=>x.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedCartela = n;
+  document.getElementById('pickSelected').textContent = n;
+  document.getElementById('confirmBtn').disabled = false;
+}
+function confirmCard(){
+  socket.emit('joinGame', playerName);
+  document.getElementById('gBet').textContent = selectedStake;
 }
 
-function showToast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(()=>t.classList.remove('show'), 1600);
-}
+/* ---------- Socket events ---------- */
+socket.on('yourCard', (card)=>{
+  myCardData = card; // {B:[..],I:[..],N:[..],G:[..],O:[..]}
+  markedSet = new Set();
+  renderMyCard();
+  showScreen('screenGame');
+  toast('ካርድ ደርሶሃል — መልካም ዕድል!');
+});
 
-let selectionLocked = false;
+socket.on('calledSoFar', (nums)=>{
+  calledSet = new Set(nums);
+  renderMyCard();
+});
 
-function toggleCard(id, cellEl){
-  if(selectionLocked) return;
-  const idx = heldIds.indexOf(id);
-  if(idx >= 0){
-    heldIds.splice(idx,1);
-    cellEl.classList.remove('chosen');
-  } else {
-    if(heldIds.length >= MAX_CARDS){
-      showToast('ከ2 ካርድ በላይ መያዝ አይችሉም — አንዱን መጀመሪያ ያውጡ');
-      return;
-    }
-    heldIds.push(id);
-    cellEl.classList.add('chosen');
-    document.getElementById('previewTitle').textContent = 'ካርድ #' + id + ' ቅድመ-እይታ';
-    renderPreviewGrid(document.getElementById('previewGrid'), generateCard(id));
-  }
-  document.querySelectorAll('.pool-cell').forEach(c=>{
-    const locked = heldIds.length >= MAX_CARDS && !heldIds.includes(Number(c.dataset.id));
-    c.classList.toggle('locked', locked);
-  });
-  renderHeldChips();
-}
+socket.on('numberCalled', (data)=>{
+  calledSet.add(data.number);
+  document.getElementById('gCalled').textContent = data.calledNumbers ? data.calledNumbers.length : calledSet.size;
+  document.getElementById('ballDisplay').innerHTML =
+    `<div class="bl">${data.letter}</div><div class="bn">${data.number}</div>`;
+  renderMyCard();
+});
 
-function renderHeldChips(){
-  const wrap = document.getElementById('heldChips');
+socket.on('bingoWinner', (data)=>{
+  document.getElementById('winnerName').textContent = data.name + ' 🏆';
+  document.getElementById('winnerOverlay').style.display = 'flex';
+});
+
+socket.on('bingoFalse', (data)=>{
+  toast(data.message || 'ገና ቢንጎ የለም');
+});
+
+socket.on('gameOver', (data)=>{
+  toast(data.message || 'ጨዋታው አልቋል');
+});
+
+function renderMyCard(){
+  const wrap = document.getElementById('myCard');
   wrap.innerHTML = '';
-  heldIds.forEach(id=>{
-    const chip = document.createElement('div');
-    chip.className = 'held-chip';
-    chip.innerHTML = 'ካርድ #' + id + ' <button aria-label="አውጣ">✕</button>';
-    chip.querySelector('button').onclick = (e)=>{
-      e.stopPropagation();
-      const cell = document.querySelector('.pool-cell[data-id="'+id+'"]');
-      if(cell) toggleCard(id, cell); else { heldIds = heldIds.filter(x=>x!==id); renderHeldChips(); }
-    };
-    wrap.appendChild(chip);
-  });
-  document.getElementById('heldCount').textContent = heldIds.length;
-  document.getElementById('confirmBtn').disabled = heldIds.length === 0;
-}
-
-function lockSelection(){
-  if(heldIds.length === 0 || selectionLocked) return;
-  selectionLocked = true;
-  document.querySelectorAll('.pool-cell').forEach(c => c.classList.add('locked'));
-  document.getElementById('confirmBtn').disabled = true;
-  document.getElementById('confirmBtn').textContent = 'ካርድ ተመዝግቧል — ጨዋታው ሰከንዱ ሲያልቅ ይጀምራል';
-  showToast('ካርድዎ ተመዝግቧል፣ ሰከንዱ ሲያልቅ ጨዋታው ይጀምራል');
-}
-
-function startCountdown(){
-  clearInterval(countdownTimer);
-  let t = 30;
-  document.getElementById('countdown').textContent = t;
-  countdownTimer = setInterval(()=>{
-    t--; document.getElementById('countdown').textContent = t;
-    if(t<=0){
-      clearInterval(countdownTimer);
-      if(heldIds.length === 0){
-        let id; do{ id = 1+Math.floor(Math.random()*CARD_POOL_SIZE); }while(heldIds.includes(id));
-        heldIds.push(id);
+  if(!myCardData) return;
+  const letters = ['B','I','N','G','O'];
+  for(let row=0; row<5; row++){
+    for(let col=0; col<5; col++){
+      const val = myCardData[letters[col]][row];
+      const cell = document.createElement('div');
+      cell.className = 'num';
+      if(val === 'FREE'){
+        cell.textContent = '★';
+        cell.classList.add('marked');
+      } else {
+        cell.textContent = val;
+        if(calledSet.has(val)) cell.classList.add('called');
+        if(markedSet.has(val)) cell.classList.add('marked');
+        cell.onclick = ()=>{
+          if(calledSet.has(val)){
+            markedSet.add(val);
+            socket.emit('markNumber', val);
+            renderMyCard();
+          }
+        };
       }
-      confirmCards();
-    }
-  }, 1000);
-}
-
-/* ================= CARD SELECT -> GAME ================= */
-async function confirmCards(){
-  clearInterval(countdownTimer);
-
-  const stake = Number(document.getElementById('gBet').textContent);
-  const totalStake = stake * heldIds.length;
-  if(totalStake > playWallet){
-    showToast('በጨዋታ ቦርሳዎ በቂ ብር የለም — ገንዘብ ይጨምሩ');
-    showScreen('home');
-    return;
-  }
-  try{
-    await adjustPlayWallet(-totalStake, 'stake');
-  }catch(err){
-    showToast('በጨዋታ ቦርሳዎ በቂ ብር የለም — ገንዘብ ይጨምሩ');
-    showScreen('home');
-    return;
-  }
-
-  heldCardsData = heldIds.map(id => ({ id, cells: generateCard(id) }));
-
-  const players = 80 + Math.floor(Math.random()*40);
-  const derash = Math.round(stake * players * 0.75); // 25% house cut withheld from the pot
-  document.getElementById('gPlayers').textContent = players;
-  document.getElementById('gDerash').textContent = derash;
-  document.getElementById('gCalled').textContent = 0;
-  document.getElementById('gameId').textContent = 'BB' + Math.random().toString(36).slice(2,8).toUpperCase();
-  called = []; calledNums = new Set(); won = false;
-  document.getElementById('historyStrip').innerHTML = '';
-  document.getElementById('ballLetter').textContent = '—';
-  document.getElementById('ballDigit').textContent = '·';
-  document.getElementById('winOverlay').classList.remove('show');
-  autoOn = true;
-  document.getElementById('autoSwitch').classList.remove('off');
-
-  renderCardsStack();
-  showScreen('game');
-  startAutoCall();
-}
-
-function renderCardsStack(){
-  const stack = document.getElementById('cardsStack');
-  stack.innerHTML = '';
-  stack.classList.toggle('two-up', heldCardsData.length === 2);
-  heldCardsData.forEach(card=>{
-    const block = document.createElement('div');
-    block.className = 'card-block';
-    block.dataset.cardId = card.id;
-    const label = document.createElement('div');
-    label.className = 'clabel';
-    label.textContent = 'ካርድ #' + card.id;
-    block.appendChild(label);
-    const player = document.createElement('div');
-    player.className = 'cplayer';
-    player.textContent = 'ተጫዋች #' + card.id;
-    block.appendChild(player);
-    const grid = document.createElement('div');
-    grid.className = 'my-card';
-    cols.forEach(c=>{
-      const h = document.createElement('div');
-      h.className = 'head ' + c; h.textContent = c;
-      grid.appendChild(h);
-    });
-    for(let r=0;r<5;r++){
-      cols.forEach(c=>{
-        const cd = card.cells.find(x=>x.row===r && x.col===c);
-        const el = document.createElement('div');
-        el.className = 'cell' + (cd.num==='FREE' ? ' free' : '') + (cd.marked ? ' marked' : '');
-        el.textContent = cd.num;
-        el.dataset.row = r; el.dataset.col = c;
-        grid.appendChild(el);
-      });
-    }
-    block.appendChild(grid);
-    stack.appendChild(block);
-  });
-}
-
-/* ================= CALLING / MARKING / WIN ================= */
-function toggleAuto(){
-  autoOn = !autoOn;
-  document.getElementById('autoSwitch').classList.toggle('off', !autoOn);
-  if(autoOn && !won) startAutoCall(); else stopAutoCall();
-}
-function startAutoCall(){ stopAutoCall(); if(!won) autoTimer = setInterval(callNumber, 2400); }
-function stopAutoCall(){ clearInterval(autoTimer); autoTimer = null; }
-
-function callNumber(){
-  if(won){ stopAutoCall(); return; }
-  const remaining = [];
-  cols.forEach(c=>{
-    const [lo,hi] = colRanges[c];
-    for(let n=lo;n<=hi;n++){ if(!calledNums.has(n)) remaining.push({n,c}); }
-  });
-  if(remaining.length === 0){ stopAutoCall(); return; }
-  const pick = remaining[Math.floor(Math.random()*remaining.length)];
-  calledNums.add(pick.n);
-  called.push(pick.c+'-'+pick.n);
-
-  document.getElementById('ballLetter').textContent = pick.c;
-  document.getElementById('ballDigit').textContent = pick.n;
-  document.getElementById('gCalled').textContent = called.length;
-
-  const strip = document.getElementById('historyStrip');
-  document.querySelectorAll('.hist-chip.latest').forEach(el=>el.classList.remove('latest'));
-  const chip = document.createElement('div');
-  chip.className = 'hist-chip latest';
-  chip.textContent = pick.c+'-'+pick.n;
-  strip.appendChild(chip);
-  strip.scrollLeft = strip.scrollWidth;
-
-  playCallSound();
-  speakCall(pick.c, pick.n);
-
-  markAllCards(pick.c, pick.n);
-  checkWinAllCards();
-}
-
-function markAllCards(letter, num){
-  heldCardsData.forEach(card=>{
-    const cd = card.cells.find(x=>x.letter===letter && x.num===num);
-    if(!cd) return;
-    cd.marked = true;
-    const block = document.querySelector('.card-block[data-card-id="'+card.id+'"]');
-    if(!block) return;
-    const el = block.querySelector('.cell[data-row="'+cd.row+'"][data-col="'+letter+'"]');
-    if(el){ el.classList.add('marked','pulse'); setTimeout(()=>el.classList.remove('pulse'), 400); }
-  });
-}
-
-function linesFor(cellsArr){
-  const grid = {};
-  cellsArr.forEach(c => grid[c.row+'-'+c.col] = c.marked);
-  const lines = [];
-  for(let r=0;r<5;r++) lines.push(cols.map(c=>r+'-'+c));
-  for(let ci=0;ci<5;ci++) lines.push([0,1,2,3,4].map(r=>r+'-'+cols[ci]));
-  lines.push([0,1,2,3,4].map((r,i)=>r+'-'+cols[i]));
-  lines.push([0,1,2,3,4].map((r,i)=>r+'-'+cols[4-i]));
-  return { grid, lines };
-}
-
-function checkWinAllCards(){
-  for(const card of heldCardsData){
-    const { grid, lines } = linesFor(card.cells);
-    for(const line of lines){
-      if(line.every(key=>grid[key])){
-        declareWin(card.id, line);
-        return;
-      }
+      wrap.appendChild(cell);
     }
   }
 }
 
-async function declareWin(cardId, line){
-  if(won) return;
-  won = true;
-  stopAutoCall();
-  const block = document.querySelector('.card-block[data-card-id="'+cardId+'"]');
-  if(block){
-    line.forEach(key=>{
-      const [r,c] = key.split('-');
-      const el = block.querySelector('.cell[data-row="'+r+'"][data-col="'+c+'"]');
-      if(el) el.classList.add('win');
-    });
-  }
-  playWinSound();
-  const payout = Number(document.getElementById('gDerash').textContent); // winner takes the pot (house's 25% already withheld)
-  document.getElementById('winSub').textContent = 'ካርድ #' + cardId + ' አሸነፈ — ' + payout + ' ብር አግኝተዋል!';
-  await adjustPlayWallet(payout, 'payout');
-  setTimeout(()=> document.getElementById('winOverlay').classList.add('show'), 500);
-  try{
-    const tg = window.Telegram && window.Telegram.WebApp;
-    if(tg) tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
-  }catch(e){}
-}
-
+function claimBingo(){ socket.emit('claimBingo'); }
 function leaveGame(){
-  stopAutoCall();
-  clearInterval(countdownTimer);
-  showScreen('home');
+  showScreen('screenHome');
+  myCardData = null; markedSet = new Set(); calledSet = new Set();
 }
-
-renderWallets();
-syncWalletFromBackend();
+function closeWinner(){
+  document.getElementById('winnerOverlay').style.display = 'none';
+  leaveGame();
+}
 </script>
 </body>
 </html>
