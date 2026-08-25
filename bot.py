@@ -10,7 +10,14 @@ import json
 import random
 import asyncio
 import logging
+import hmac
+import hashlib
+import threading
+from urllib.parse import parse_qsl
 from dataclasses import dataclass, field
+
+import requests
+from flask import Flask, request, jsonify
 
 from telegram import (
     Update,
@@ -46,6 +53,7 @@ COLUMN_RANGES = {
 ADMIN_ID = 6223621430  # <-- የአንተ Telegram User ID (admin ብቻ)
 BALANCE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "balances.json")
 CARD_COST = 10  # ጨዋታ ውስጥ ካርድ ለመግዛት የሚያስፈልግ ነጥብ
+TELEBIRR_NUMBER = "0940501400"  # ገንዘብ የሚላክበት Telebirr ቁጥር
 
 
 def load_balances() -> dict:
@@ -69,6 +77,10 @@ balances: dict[int, int] = load_balances()
 pending_deposits: dict[str, dict] = {}
 _next_request_id = 1
 
+# pending withdrawal requests: request_id -> {user_id, name, amount, telebirr}
+pending_withdrawals: dict[str, dict] = {}
+_next_withdraw_id = 1
+
 
 def get_balance(user_id: int) -> int:
     return balances.get(user_id, 0)
@@ -77,6 +89,122 @@ def get_balance(user_id: int) -> int:
 def change_balance(user_id: int, delta: int):
     balances[user_id] = get_balance(user_id) + delta
     save_balances(balances)
+
+
+# ---------------------------------------------------------------------------
+# Mini App HTTP API — lets bingo-mini-app-5-3.html read/request balances.
+# Verifies Telegram's WebApp `initData` so no one can fake another user's ID.
+# Runs in a background thread alongside the bot's polling loop.
+# ---------------------------------------------------------------------------
+
+BOT_TOKEN_FOR_API = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+api_app = Flask(__name__)
+
+
+@api_app.after_request
+def _add_cors_headers(resp):
+    # Needed because the mini app is served from GitHub Pages (a different
+    # origin) and calls this API directly from the browser.
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return resp
+
+
+def verify_init_data(init_data: str):
+    """Validate Telegram WebApp initData and return its fields, or None if invalid/faked."""
+    if not init_data or not BOT_TOKEN_FOR_API:
+        return None
+    try:
+        parsed = dict(parse_qsl(init_data, strict_parsing=True))
+    except ValueError:
+        return None
+    received_hash = parsed.pop("hash", None)
+    if not received_hash:
+        return None
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN_FOR_API.encode(), hashlib.sha256).digest()
+    calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calculated_hash, received_hash):
+        return None
+    return parsed
+
+
+def user_id_from_init_data(init_data: str):
+    fields = verify_init_data(init_data)
+    if not fields:
+        return None
+    try:
+        user = json.loads(fields.get("user", "{}"))
+        return int(user["id"])
+    except Exception:
+        return None
+
+
+def notify_admin_of_deposit_request(req_id: str, name: str, user_id: int, amount: int):
+    """Same admin approval message as /deposit, sent via plain HTTP (this runs outside the bot's asyncio loop)."""
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ አጽድቅ", "callback_data": f"dep_ok_{req_id}"},
+            {"text": "❌ ውድቅ አድርግ", "callback_data": f"dep_no_{req_id}"},
+        ]]
+    }
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN_FOR_API}/sendMessage",
+        json={
+            "chat_id": ADMIN_ID,
+            "text": (
+                f"🔔 አዲስ የነጥብ ጥያቄ (ከ mini app)\n"
+                f"ተጫዋች፦ {name} (id: {user_id})\n"
+                f"የተጠየቀ መጠን፦ {amount} ነጥብ"
+            ),
+            "reply_markup": json.dumps(keyboard),
+        },
+        timeout=10,
+    )
+
+
+@api_app.route("/api/balance", methods=["GET", "OPTIONS"])
+def api_balance():
+    if request.method == "OPTIONS":
+        return "", 204
+    init_data = request.args.get("initData", "")
+    user_id = user_id_from_init_data(init_data)
+    if user_id is None:
+        return jsonify({"error": "invalid initData"}), 401
+    return jsonify({"balance": get_balance(user_id)})
+
+
+@api_app.route("/api/deposit", methods=["POST", "OPTIONS"])
+def api_deposit():
+    global _next_request_id
+    if request.method == "OPTIONS":
+        return "", 204
+    body = request.get_json(force=True, silent=True) or {}
+    user_id = user_id_from_init_data(body.get("initData", ""))
+    if user_id is None:
+        return jsonify({"error": "invalid initData"}), 401
+
+    amount = body.get("amount")
+    if not isinstance(amount, int) or amount <= 0:
+        return jsonify({"error": "invalid amount"}), 400
+
+    try:
+        name = json.loads(verify_init_data(body["initData"])["user"]).get("first_name", "ተጫዋች")
+    except Exception:
+        name = "ተጫዋች"
+
+    req_id = str(_next_request_id)
+    _next_request_id += 1
+    pending_deposits[req_id] = {"user_id": user_id, "name": name, "amount": amount}
+
+    notify_admin_of_deposit_request(req_id, name, user_id, amount)
+    return jsonify({"status": "pending", "telebirr_number": TELEBIRR_NUMBER})
+
+
+def run_api_server():
+    port = int(os.environ.get("PORT", 8080))
+    api_app.run(host="0.0.0.0", port=port)
 
 
 def letter_for_number(n: int) -> str:
@@ -161,18 +289,105 @@ def get_game(chat_id: int) -> Game:
     return games[chat_id]
 
 
+SUPPORT_USERNAME = "your_support_username"  # <-- የድጋፍ አካውንትህን ዩዘርኔም እዚህ ቀይር
+
+
+def build_main_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Play 🎮", callback_data="menu_play"),
+            InlineKeyboardButton("Register 📝", callback_data="menu_register"),
+        ],
+        [
+            InlineKeyboardButton("Check Balance 💵", callback_data="menu_balance"),
+            InlineKeyboardButton("Deposit 💵", callback_data="menu_deposit"),
+        ],
+        [
+            InlineKeyboardButton("Contact Support ☎️", callback_data="menu_support"),
+            InlineKeyboardButton("Instruction 📖", callback_data="menu_instruction"),
+        ],
+        [
+            InlineKeyboardButton("Transfer 🎁", callback_data="menu_transfer"),
+            InlineKeyboardButton("Withdraw 🤑", callback_data="menu_withdraw"),
+        ],
+        [
+            InlineKeyboardButton("Invite 🔗", callback_data="menu_invite"),
+            InlineKeyboardButton("Convert Bonus 🎫", callback_data="menu_convert"),
+        ],
+    ])
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🎱 *Bingo Bot* (ለመዝናኛ ብቻ)\n\n"
-        "/balance — ሂሳብህን አሳይ\n"
-        "/deposit <መጠን> — ነጥብ ጠይቅ (admin ማረጋገጥ አለበት)\n\n"
-        "/newgame — አዲስ ጨዋታ ጀምር\n"
-        "/join — ገባ (ካርድ ትገዛለህ)\n"
-        "/card — ካርድህን አሳይ\n"
-        "/bingo — ካሸነፍክ ተናገር\n"
-        "/stopgame — ጨዋታውን አቁም\n"
+    await update.message.reply_text(
+        "👋 እንኳን ወደ Beteseb Bingo በደህና መጡ! ከታች ካለው ምረጥ፦",
+        reply_markup=build_main_menu(),
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    action = query.data
+    user = query.from_user
+
+    if action == "menu_play":
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "🎮 ጨዋታ ክፈት",
+                web_app=WebAppInfo(
+                    url="https://tomasabebawtom-create.github.io/Bingo-mini-app/bingo-mini-app-5-3.html"
+                ),
+            )
+        ]])
+        await query.message.reply_text("ከታች ያለውን ተጫን፦", reply_markup=keyboard)
+
+    elif action == "menu_register":
+        await query.message.reply_text(
+            "✅ ስትጠቀም በራስሰር ተመዝግበሃል — ተጨማሪ ምዝገባ አያስፈልግም።"
+        )
+
+    elif action == "menu_balance":
+        bal = get_balance(user.id)
+        await query.message.reply_text(f"💰 ሂሳብህ፦ {bal} ነጥብ")
+
+    elif action == "menu_deposit":
+        await query.message.reply_text(
+            "💳 ገንዘብ ለማስገባት፦ `/deposit <መጠን>` ብለህ ጻፍ።\nለምሳሌ፦ `/deposit 100`",
+            parse_mode="Markdown",
+        )
+
+    elif action == "menu_support":
+        await query.message.reply_text(
+            f"☎️ ድጋፍ ለማግኘት አግኙን፦ @{SUPPORT_USERNAME}"
+        )
+
+    elif action == "menu_instruction":
+        await query.message.reply_text(
+            "📖 አጨዋወት፦\n"
+            "1️⃣ /deposit ብለህ ነጥብ ግዛ\n"
+            "2️⃣ /newgame ወይም /join ብለህ ወደ ጨዋታ ግባ\n"
+            "3️⃣ ቁጥሮች ሲጠሩ ካርድህ ላይ ያለውን አረጋግጥ\n"
+            "4️⃣ ስታሸንፍ /bingo በል"
+        )
+
+    elif action == "menu_transfer":
+        await query.message.reply_text("🎁 Transfer ገና በዝግጅት ላይ ነው — በቅርቡ ይመጣል።")
+
+    elif action == "menu_withdraw":
+        await query.message.reply_text(
+            "🤑 ገንዘብ ወጪ ለማድረግ፦ `/withdraw <መጠን> <telebirr ቁጥር>` ብለህ ጻፍ።\n"
+            "ለምሳሌ፦ `/withdraw 100 0912345678`",
+            parse_mode="Markdown",
+        )
+
+    elif action == "menu_invite":
+        me = await context.bot.get_me()
+        await query.message.reply_text(
+            f"🔗 ጓደኞችህን ጋብዝ፦ https://t.me/{me.username}"
+        )
+
+    elif action == "menu_convert":
+        await query.message.reply_text("🎫 Convert Bonus ገና በዝግጅት ላይ ነው — በቅርቡ ይመጣል።")
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +422,11 @@ async def deposit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     await update.message.reply_text(
-        "🕓 ጥያቄህ ወደ አድሚን ተልኳል፣ እስኪያረጋግጥ ጠብቅ።"
+        f"🕓 ጥያቄህ ወደ አድሚን ተልኳል።\n\n"
+        f"💳 {amount} ብር ወደዚህ Telebirr ቁጥር ላክ፦\n"
+        f"📱 `{TELEBIRR_NUMBER}`\n\n"
+        f"ከላክህ በኋላ አድሚን አረጋግጦ ነጥብህን ይጨምርልሃል።",
+        parse_mode="Markdown",
     )
 
     keyboard = InlineKeyboardMarkup(
@@ -267,8 +486,113 @@ async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
-# Game commands
+# Withdraw commands
 # ---------------------------------------------------------------------------
+
+async def withdraw_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global _next_withdraw_id
+    user = update.effective_user
+
+    if len(context.args) < 2 or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "እንዲህ ተጠቀም፦ /withdraw <መጠን> <telebirr ቁጥር>\nለምሳሌ፦ /withdraw 100 0912345678"
+        )
+        return
+
+    amount = int(context.args[0])
+    telebirr = context.args[1]
+    if amount <= 0:
+        await update.message.reply_text("መጠኑ ከ0 በላይ መሆን አለበት።")
+        return
+
+    if get_balance(user.id) < amount:
+        await update.message.reply_text(
+            f"❌ በቂ ነጥብ የለህም። ሂሳብህ፦ {get_balance(user.id)} ነጥብ"
+        )
+        return
+
+    # Hold the funds immediately so the user can't request the same points twice.
+    change_balance(user.id, -amount)
+
+    req_id = str(_next_withdraw_id)
+    _next_withdraw_id += 1
+    pending_withdrawals[req_id] = {
+        "user_id": user.id,
+        "name": user.first_name,
+        "amount": amount,
+        "telebirr": telebirr,
+    }
+
+    await update.message.reply_text(
+        f"🕓 የወጪ ጥያቄህ ወደ አድሚን ተልኳል፣ እስኪያረጋግጥ ጠብቅ።\n"
+        f"({amount} ነጥብ ከሂሳብህ ላይ ተይዟል)"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ አጽድቅ", callback_data=f"wd_ok_{req_id}"),
+                InlineKeyboardButton("❌ ውድቅ አድርግ", callback_data=f"wd_no_{req_id}"),
+            ]
+        ]
+    )
+    await context.bot.send_message(
+        ADMIN_ID,
+        f"🔔 አዲስ የወጪ ጥያቄ\n"
+        f"ተጫዋች፦ {user.first_name} (id: {user.id})\n"
+        f"የተጠየቀ መጠን፦ {amount} ነጥብ\n"
+        f"Telebirr ቁጥር፦ {telebirr}",
+        reply_markup=keyboard,
+    )
+
+
+async def withdraw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("ይህን ማድረግ የምትችለው አድሚን ብቻ ነው።", show_alert=True)
+        return
+
+    # data format: wd_ok_<id> or wd_no_<id>
+    parts = query.data.split("_", 2)
+    action = parts[1]  # "ok" or "no"
+    req_id = parts[2]
+
+    request = pending_withdrawals.pop(req_id, None)
+    if not request:
+        await query.edit_message_text("ይህ ጥያቄ ቀድሞ ተስተናግዷል ወይም አልተገኘም።")
+        return
+
+    user_id = request["user_id"]
+    name = request["name"]
+    amount = request["amount"]
+    telebirr = request["telebirr"]
+
+    if action == "ok":
+        # Funds were already deducted when the request was made — admin now
+        # sends the money manually to the user's Telebirr number.
+        await query.edit_message_text(
+            f"✅ ጸድቋል፦ {name} — {amount} ነጥብ ({telebirr}) ላይ ገንዘቡን በእጅ ላክ"
+        )
+        try:
+            await context.bot.send_message(
+                user_id,
+                f"✅ የወጪ ጥያቄህ ጸድቋል! {amount} ነጥብ ወደ {telebirr} ተልኳል።",
+            )
+        except Exception:
+            pass
+    else:
+        # Refund the held points back to the user.
+        change_balance(user_id, amount)
+        await query.edit_message_text(f"❌ ውድቅ ተደርጓል፦ {name} ({amount} ነጥብ ተመልሷል)")
+        try:
+            await context.bot.send_message(
+                user_id, f"❌ የወጪ ጥያቄህ ውድቅ ተደርጓል። {amount} ነጥብ ወደ ሂሳብህ ተመልሷል።"
+            )
+        except Exception:
+            pass
+
 
 async def newgame(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -420,11 +744,17 @@ def main():
             "ምሳሌ (Windows PowerShell): $env:TELEGRAM_BOT_TOKEN='123456:ABC-yourtoken'"
         )
 
+    threading.Thread(target=run_api_server, daemon=True).start()
+    log.info("Mini app API server starting on port %s...", os.environ.get("PORT", 8080))
+
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^menu_"))
     app.add_handler(CommandHandler("balance", balance_cmd))
     app.add_handler(CommandHandler("deposit", deposit_cmd))
     app.add_handler(CallbackQueryHandler(deposit_callback, pattern=r"^dep_"))
+    app.add_handler(CommandHandler("withdraw", withdraw_cmd))
+    app.add_handler(CallbackQueryHandler(withdraw_callback, pattern=r"^wd_"))
     app.add_handler(CommandHandler("newgame", newgame))
     app.add_handler(CommandHandler("join", join))
     app.add_handler(CommandHandler("card", show_card))
