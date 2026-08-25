@@ -6,46 +6,134 @@
     <title>Spin and Win Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
             font-family: Arial, sans-serif;
             background-color: #0f172a;
             color: #ffffff;
             text-align: center;
-            padding: 20px;
+            padding: 16px;
+            margin: 0;
+        }
+        h1 {
+            margin-bottom: 4px;
+        }
+        #user-greeting {
+            color: #cbd5e1;
+            margin-top: 0;
+        }
+
+        #picker-section {
+            margin: 20px auto;
+            max-width: 420px;
+        }
+        #picker-section h3 {
+            margin-bottom: 10px;
+            color: #fbbf24;
+        }
+        #selected-display {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            min-height: 30px;
+        }
+        #number-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .num-btn {
+            background: #1e293b;
+            border: 2px solid #334155;
+            color: #fff;
+            border-radius: 8px;
+            padding: 10px 0;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .num-btn.red { border-color: #ef4444; }
+        .num-btn.black { border-color: #1e293b; background:#0b1220; }
+        .num-btn.green { border-color: #10b981; }
+        .num-btn.selected {
+            background: #fbbf24 !important;
+            color: #000 !important;
+            border-color: #fbbf24 !important;
+            transform: scale(1.05);
+        }
+
+        #wheel-wrapper {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            margin: 20px auto;
+        }
+        #pointer {
+            position: absolute;
+            top: -14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 24px solid #fbbf24;
+            z-index: 5;
         }
         #wheel-container {
-            margin: 30px auto;
-            position: relative;
-            width: 250px;
-            height: 250px;
+            width: 280px;
+            height: 280px;
             border-radius: 50%;
-            border: 10px solid #fbbf24;
+            border: 8px solid #fbbf24;
+            position: relative;
+            transition: transform 4.5s cubic-bezier(0.12, 0.67, 0.1, 0.99);
+            overflow: hidden;
+        }
+        #wheel-container svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #hub {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 46px;
+            height: 46px;
+            background: #fbbf24;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: conic-gradient(
-                #ef4444 0deg 60deg,
-                #3b82f6 60deg 120deg,
-                #10b981 120deg 180deg,
-                #f59e0b 180deg 240deg,
-                #8b5cf6 240deg 300deg,
-                #ec4899 300deg 360deg
-            );
-            transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+            font-weight: bold;
+            color: #000;
+            z-index: 4;
         }
-        button {
+
+        button#spin-btn {
             background-color: #fbbf24;
             color: #000;
             border: none;
-            padding: 12px 24px;
+            padding: 14px 30px;
             font-size: 18px;
             font-weight: bold;
             border-radius: 8px;
             cursor: pointer;
             margin-top: 20px;
         }
-        button:active {
+        button#spin-btn:disabled {
+            opacity: 0.5;
+        }
+        button#spin-btn:active {
             transform: scale(0.95);
+        }
+        #result {
+            min-height: 32px;
+            margin-top: 16px;
         }
     </style>
 </head>
@@ -54,13 +142,24 @@
     <h1>🎡 Spin & Win</h1>
     <p id="user-greeting">እንኳን ደህና መጡ!</p>
 
-    <div id="wheel-container"></div>
-    
-    <button onclick="spinWheel()">አዙር (SPIN)</button>
+    <div id="picker-section">
+        <h3>ቁጥርዎን ይምረጡ (0 - 36)</h3>
+        <div id="selected-display">የተመረጠ ቁጥር: <span id="selected-number">-</span></div>
+        <div id="number-grid"></div>
+    </div>
+
+    <div id="wheel-wrapper">
+        <div id="pointer"></div>
+        <div id="wheel-container">
+            <svg id="wheel-svg" viewBox="0 0 300 300"></svg>
+        </div>
+        <div id="hub">🎯</div>
+    </div>
+
+    <button id="spin-btn" onclick="spinWheel()">አዙር (SPIN)</button>
     <h2 id="result"></h2>
 
     <script>
-        // የቴሌግራም ዌብ አፕ ማቀናጀት
         let tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -69,24 +168,122 @@
             document.getElementById("user-greeting").innerText = `ሰላም ${username}፣ ዕድልዎን ይሞክሩ!`;
         }
 
+        const WHEEL_ORDER = [
+            0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,
+            5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26
+        ];
+        const RED_NUMBERS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+
+        function colorFor(n) {
+            if (n === 0) return 'green';
+            return RED_NUMBERS.has(n) ? 'red' : 'black';
+        }
+        function hexFor(n) {
+            const c = colorFor(n);
+            if (c === 'green') return '#10b981';
+            if (c === 'red') return '#ef4444';
+            return '#111827';
+        }
+
+        let selectedNumber = null;
+
+        const grid = document.getElementById('number-grid');
+        for (let n = 0; n <= 36; n++) {
+            const btn = document.createElement('button');
+            btn.className = 'num-btn ' + colorFor(n);
+            btn.textContent = n;
+            btn.dataset.num = n;
+            btn.onclick = () => selectNumber(n, btn);
+            grid.appendChild(btn);
+        }
+
+        function selectNumber(n, btnEl) {
+            selectedNumber = n;
+            document.querySelectorAll('.num-btn').forEach(b => b.classList.remove('selected'));
+            btnEl.classList.add('selected');
+            document.getElementById('selected-number').textContent = n;
+            if (tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+        }
+
+        const svg = document.getElementById('wheel-svg');
+        const CX = 150, CY = 150, R = 148;
+        const segAngle = 360 / WHEEL_ORDER.length;
+
+        function polar(cx, cy, r, angleDeg) {
+            const rad = (angleDeg - 90) * Math.PI / 180;
+            return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+        }
+
+        WHEEL_ORDER.forEach((num, i) => {
+            const startAngle = i * segAngle;
+            const endAngle = startAngle + segAngle;
+            const p1 = polar(CX, CY, R, startAngle);
+            const p2 = polar(CX, CY, R, endAngle);
+            const largeArc = segAngle > 180 ? 1 : 0;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", `M${CX},${CY} L${p1.x},${p1.y} A${R},${R} 0 ${largeArc} 1 ${p2.x},${p2.y} Z`);
+            path.setAttribute("fill", hexFor(num));
+            path.setAttribute("stroke", "#0f172a");
+            path.setAttribute("stroke-width", "1");
+            svg.appendChild(path);
+
+            const mid = startAngle + segAngle / 2;
+            const labelPos = polar(CX, CY, R * 0.82, mid);
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", labelPos.x);
+            text.setAttribute("y", labelPos.y);
+            text.setAttribute("fill", "#ffffff");
+            text.setAttribute("font-size", "11");
+            text.setAttribute("font-weight", "bold");
+            text.setAttribute("text-anchor", "middle");
+            text.setAttribute("dominant-baseline", "middle");
+            text.setAttribute("transform", `rotate(${mid}, ${labelPos.x}, ${labelPos.y})`);
+            text.textContent = num;
+            svg.appendChild(text);
+        });
+
         let currentRotation = 0;
+        let spinning = false;
 
         function spinWheel() {
-            const wheel = document.getElementById("wheel-container");
-            const resultText = document.getElementById("result");
-            
+            if (spinning) return;
+
+            if (selectedNumber === null) {
+                document.getElementById('result').innerText = '⚠️ እባክዎ መጀመሪያ ቁጥር ይምረጡ!';
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+                return;
+            }
+
+            spinning = true;
+            document.getElementById('spin-btn').disabled = true;
+
+            const wheel = document.getElementById('wheel-container');
+            const resultText = document.getElementById('result');
             resultText.innerText = "እየተሽከረከረ ነው...";
 
-            // የዘፈቀደ የማዞሪያ ዲግሪ (ከ 3 እስከ 5 ሙሉ ዙር በተጨማሪ የተወሰነ ዕድል)
-            let randomDegree = Math.floor(Math.random() * 3600) + 720;
-            currentRotation += randomDegree;
-            
+            const winningNumber = Math.floor(Math.random() * 37);
+            const winningIndex = WHEEL_ORDER.indexOf(winningNumber);
+
+            const targetAngle = winningIndex * segAngle + segAngle / 2;
+            const fullSpins = 6 * 360;
+            const finalRotation = fullSpins - targetAngle;
+
+            currentRotation += finalRotation - (currentRotation % 360);
             wheel.style.transform = `rotate(${currentRotation}deg)`;
 
             setTimeout(() => {
-                resultText.innerText = "እንኳን ደስ አለዎት! 10 ነጥብ አሸንፈዋል! 🎉";
-                // ውጤቱን ወደ ቦት ወይም ዳታቤዝ መላክ ይቻላል
-            }, 4000);
+                spinning = false;
+                document.getElementById('spin-btn').disabled = false;
+
+                if (winningNumber === selectedNumber) {
+                    resultText.innerText = `🎉 እንኳን ደስ አለዎት! ቁጥር ${winningNumber} ወጣ - አሸንፈዋል!`;
+                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                } else {
+                    resultText.innerText = `😔 ቁጥር ${winningNumber} ወጣ። ቁጥርዎ ${selectedNumber} አልደረሰም። እንደገና ይሞክሩ!`;
+                    if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+                }
+            }, 4600);
         }
     </script>
 </body>
