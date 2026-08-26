@@ -33,6 +33,20 @@ const WHEEL_ORDER = [
     0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
     5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
 ];
+const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+function colorFor(n) {
+    if (n === 0) return 'green';
+    return RED_NUMBERS.has(n) ? 'red' : 'black';
+}
+// Payout multiplier per bet type (applied to SPIN_COST; straight number keeps the old 36x)
+const EVEN_MONEY_MULTIPLIER = 2; // red/black/odd/even/low/high pay 1:1 (get stake back + 1x)
+const DOZEN_MULTIPLIER = 3;      // dozens pay 2:1 (get stake back + 2x)
+const COLUMN_MULTIPLIER = 3;     // columns pay 2:1 (get stake back + 2x)
+
+// Column membership (standard roulette layout, top-to-bottom columns)
+const COLUMN_1 = new Set([1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34]);
+const COLUMN_2 = new Set([2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]);
+const COLUMN_3 = new Set([3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]);
 
 // -------------------- Balance persistence --------------------
 function loadBalances() {
@@ -161,12 +175,27 @@ app.get('/api/balance/:userId', (req, res) => {
 });
 
 // --- Mini app: spin ---
+// betType: 'number' | 'red' | 'black' | 'odd' | 'even'
+// betValue: only required when betType === 'number' (0-36)
 app.post('/api/spin-win', (req, res) => {
-    const { initData, number } = req.body;
+    const { initData, betType, betValue, number } = req.body;
     const user = validateInitData(initData);
     if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
 
-    if (typeof number !== 'number' || number < 0 || number > 36) {
+    // Back-compat: old clients sent {number} only, meaning a straight-up number bet.
+    const type = betType || (typeof number === 'number' ? 'number' : null);
+    const value = betType === 'number' ? betValue : number;
+
+    const VALID_TYPES = [
+        'number', 'red', 'black', 'odd', 'even',
+        'dozen1', 'dozen2', 'dozen3',
+        'low', 'high',
+        'col1', 'col2', 'col3',
+    ];
+    if (!VALID_TYPES.includes(type)) {
+        return res.status(400).json({ error: 'ልክ ያልሆነ የውርርድ አይነት' });
+    }
+    if (type === 'number' && (typeof value !== 'number' || value < 0 || value > 36)) {
         return res.status(400).json({ error: 'ልክ ያልሆነ ቁጥር' });
     }
 
@@ -180,15 +209,56 @@ app.post('/api/spin-win', (req, res) => {
 
     // Spin the wheel — decided here on the server, never trusted from the client
     const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
-    const won = winningNumber === number;
-    const amount = won ? SPIN_COST * SPIN_PAYOUT_MULTIPLIER : 0;
+    const winningColor = colorFor(winningNumber);
 
+    let won = false;
+    let multiplier = 0;
+    if (type === 'number') {
+        won = value === winningNumber;
+        multiplier = SPIN_PAYOUT_MULTIPLIER; // 36x (35:1 + stake back)
+    } else if (type === 'red' || type === 'black') {
+        won = winningColor === type;
+        multiplier = EVEN_MONEY_MULTIPLIER;
+    } else if (type === 'odd') {
+        won = winningNumber !== 0 && winningNumber % 2 === 1;
+        multiplier = EVEN_MONEY_MULTIPLIER;
+    } else if (type === 'even') {
+        won = winningNumber !== 0 && winningNumber % 2 === 0;
+        multiplier = EVEN_MONEY_MULTIPLIER;
+    } else if (type === 'low') {
+        won = winningNumber >= 1 && winningNumber <= 18;
+        multiplier = EVEN_MONEY_MULTIPLIER;
+    } else if (type === 'high') {
+        won = winningNumber >= 19 && winningNumber <= 36;
+        multiplier = EVEN_MONEY_MULTIPLIER;
+    } else if (type === 'dozen1') {
+        won = winningNumber >= 1 && winningNumber <= 12;
+        multiplier = DOZEN_MULTIPLIER;
+    } else if (type === 'dozen2') {
+        won = winningNumber >= 13 && winningNumber <= 24;
+        multiplier = DOZEN_MULTIPLIER;
+    } else if (type === 'dozen3') {
+        won = winningNumber >= 25 && winningNumber <= 36;
+        multiplier = DOZEN_MULTIPLIER;
+    } else if (type === 'col1') {
+        won = COLUMN_1.has(winningNumber);
+        multiplier = COLUMN_MULTIPLIER;
+    } else if (type === 'col2') {
+        won = COLUMN_2.has(winningNumber);
+        multiplier = COLUMN_MULTIPLIER;
+    } else if (type === 'col3') {
+        won = COLUMN_3.has(winningNumber);
+        multiplier = COLUMN_MULTIPLIER;
+    }
+
+    const amount = won ? SPIN_COST * multiplier : 0;
     if (won) {
         changeBalance(user.id, amount);
     }
 
     res.json({
         winning_number: winningNumber,
+        winning_color: winningColor,
         won,
         amount,
         balance: getBalance(user.id),
