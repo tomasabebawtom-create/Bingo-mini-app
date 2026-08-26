@@ -252,3 +252,32 @@ app.post('/api/withdraw/request', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Spin and Win API server listening on port ${PORT}`);
 });
+
+// --- Bot: admin confirms withdraw (money already sent via Telebirr) ---
+app.post('/api/withdraw/confirm', (req, res) => {
+    const { orderId, adminId } = req.body;
+    const order = ordersData.orders[orderId];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+
+    order.status = 'confirmed';
+    order.confirmedBy = adminId;
+    saveOrders(ordersData);
+
+    res.json({ userId: order.userId, balance: getBalance(String(order.userId)) });
+});
+
+// --- Bot: admin rejects withdraw (refund the deducted balance) ---
+app.post('/api/withdraw/reject', (req, res) => {
+    const { orderId, adminId } = req.body;
+    const order = ordersData.orders[orderId];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+
+    changeBalance(String(order.userId), order.amount);
+    order.status = 'rejected';
+    order.rejectedBy = adminId;
+    saveOrders(ordersData);
+
+    res.json({ userId: order.userId, balance: getBalance(String(order.userId)) });
+});
