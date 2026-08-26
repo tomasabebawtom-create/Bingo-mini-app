@@ -6,8 +6,8 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
-TOKEN = os.environ.get('BOT_TOKEN', '')
 bot = telebot.TeleBot(TOKEN)
 
 # የአድሚኖች Telegram user ID ዝርዝር - እነዚህ ብቻ ናቸው ተቀማጭ የሚያጸድቁት
