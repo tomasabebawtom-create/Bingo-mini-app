@@ -195,22 +195,47 @@ def callback_query(call):
 
 def process_withdraw_amount(message):
     """
-    ገንዘብ ወዲያውኑ ይቀነሳል (server.js /api/withdraw/request እንደዚያ ይሰራል) እና
-    pending ትዕዛዝ ይፈጠራል። አድሚኑ Approve ካደረገ ገንዘቡ በ Telebirr ተልኳል ማለት ብቻ ነው
-    (ቀሪ ሂሳብ ቀድሞውኑ ተቀንሷል)። Reject ካደረገ ግን ገንዘቡ ይመለሳል።
+    መጠኑ ይመዘገባል፣ ቀጥሎ ገንዘብ የሚላክበትን ስልክ ቁጥር (Telebirr) እንዲልክ ተጠቃሚው ይጠየቃል።
     """
     try:
         amount = float(message.text)
         if amount <= 0:
             bot.reply_to(message, "❌ መጠኑ ከዜሮ በላይ መሆን አለበት።")
             return
+    except ValueError:
+        bot.reply_to(message, "❌ እባክዎ ትክክለኛ የቁጥር መጠን ብቻ ይላኩ (ለምሳሌ: 100)")
+        return
 
+    msg = bot.reply_to(
+        message,
+        "📱 ገንዘቡ የሚላክበትን የቴሌብር ስልክ ቁጥር ላክ (ለምሳሌ: 0912345678)"
+    )
+    bot.register_next_step_handler(msg, process_withdraw_phone, amount)
+
+
+def process_withdraw_phone(message, amount):
+    """
+    ገንዘብ ወዲያውኑ ይቀነሳል (server.js /api/withdraw/request እንደዚያ ይሰራል) እና
+    pending ትዕዛዝ ይፈጠራል። አድሚኑ Approve ካደረገ ገንዘቡ በ Telebirr ተልኳል ማለት ብቻ ነው
+    (ቀሪ ሂሳብ ቀድሞውኑ ተቀንሷል)። Reject ካደረገ ግን ገንዘቡ ይመለሳል።
+    """
+    phone = message.text.strip()
+
+    if not phone.isdigit() or len(phone) < 9:
+        msg = bot.reply_to(
+            message,
+            "❌ ትክክለኛ የስልክ ቁጥር አልላኩም። እባክዎ ቁጥሮች ብቻ ይላኩ (ለምሳሌ: 0912345678)"
+        )
+        bot.register_next_step_handler(msg, process_withdraw_phone, amount)
+        return
+
+    try:
         user_id = str(message.from_user.id)
         username = message.from_user.username or message.from_user.first_name
 
         response = requests.post(
             f"{SERVER_URL}/withdraw/request",
-            json={"userId": user_id, "amount": amount},
+            json={"userId": user_id, "amount": amount, "phone": phone},
             timeout=REQUEST_TIMEOUT
         )
 
@@ -226,7 +251,8 @@ def process_withdraw_amount(message):
         bot.reply_to(
             message,
             f"⏱ የማውጣት ጥያቄዎ ተመዝግቧል (#{order_id})።\n"
-            f"💰 አዲሱ ቀሪ ሂሳብዎ: {new_balance} ብር\n\n"
+            f"💰 አዲሱ ቀሪ ሂሳብዎ: {new_balance} ብር\n"
+            f"📱 ገንዘቡ ወደ: {phone} ይላካል\n\n"
             f"አድሚን አረጋግጦ ገንዘቡን ወደ Telebirr ቁጥርዎ ይልካል።"
         )
 
@@ -242,15 +268,14 @@ def process_withdraw_amount(message):
                     f"🔔 አዲስ የማውጣት ጥያቄ\n\n"
                     f"Order: #{order_id}\n"
                     f"User: @{username} (ID: {user_id})\n"
-                    f"Amount: {amount} ብር\n\n"
+                    f"Amount: {amount} ብር\n"
+                    f"📱 Phone (Telebirr): {phone}\n\n"
                     f"ገንዘቡን በ Telebirr ከላኩ በኋላ Approve ይምረጡ:",
                     reply_markup=admin_markup
                 )
             except Exception as e:
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
 
-    except ValueError:
-        bot.reply_to(message, "❌ እባክዎ ትክክለኛ የቁጥር መጠን ብቻ ይላኩ (ለምሳሌ: 100)")
     except requests.exceptions.RequestException as e:
         logger.error(f"Server connection failed: {e}")
         bot.reply_to(message, "❌ ከሰርቨሩ ጋር መገናኘት አልተቻለም። እባክዎ ቆይተው ይሞክሩ።")
