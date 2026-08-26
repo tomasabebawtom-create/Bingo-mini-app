@@ -1,11 +1,12 @@
-    // ==================================================================
+// ==================================================================
 // Spin and Win — Backend Server
 // ==================================================================
 // Express API that serves /api/balance and /api/spin-win for the
-// Telegram Mini App (index.html). Validates Telegram initData using
-// the bot token (set as BOT_TOKEN environment variable — never put
-// the real token directly in this file). Balances are stored in a
-// local JSON file so they survive server restarts.
+// Telegram Mini App (index.html), plus /api/deposit and /api/withdraw
+// routes used by bot.py. Validates Telegram initData using the bot
+// token (set as BOT_TOKEN environment variable — never put the real
+// token directly in this file). Balances and orders are stored in
+// local JSON files so they survive server restarts.
 // ==================================================================
 
 const express = require('express');
@@ -20,12 +21,13 @@ app.use(express.json());
 app.use(express.static(__dirname)); // serves index.html if it lives alongside this file
 
 // -------------------- Config --------------------
-const PORT = process.env.PORT || 8080;
-const BOT_TOKEN = process.env.BOT_TOKEN || ''; // set this in Render's Environment settings
-const STARTING_BALANCE = 1000;
+const PORT = process.env.PORT || 3000; // matches bot.py's SERVER_URL = http://localhost:3000/api
+const BOT_TOKEN = process.env.BOT_TOKEN || ''; // set this before starting the server
+const STARTING_BALANCE = 0; // new players start at 0 — balance only grows via admin-approved deposit or a spin win
 const SPIN_COST = 10;
 const SPIN_PAYOUT_MULTIPLIER = 36; // straight-up roulette payout (35:1 winnings + stake back = 36x)
 const BALANCES_FILE = path.join(__dirname, 'balances.json');
+const ORDERS_FILE = path.join(__dirname, 'orders.json');
 
 const WHEEL_ORDER = [
     0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
@@ -61,6 +63,35 @@ function changeBalance(userId, delta) {
     balances[userId] = current + delta;
     saveBalances(balances);
     return balances[userId];
+}
+
+// -------------------- Orders persistence (deposit/withdraw) --------------------
+function loadOrders() {
+    try {
+        const raw = fs.readFileSync(ORDERS_FILE, 'utf8');
+        return JSON.parse(raw);
+    } catch (e) {
+        return { nextId: 1, orders: {} };
+    }
+}
+
+function saveOrders(data) {
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(data, null, 2));
+}
+
+let ordersData = loadOrders();
+
+function createOrder(type, userId, amount) {
+    const orderId = String(ordersData.nextId++);
+    ordersData.orders[orderId] = {
+        type,
+        userId,
+        amount,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+    };
+    saveOrders(ordersData);
+    return orderId;
 }
 
 // -------------------- Telegram initData validation --------------------
@@ -115,6 +146,7 @@ app.get('/', (req, res) => {
     res.send('Spin and Win API server is running');
 });
 
+// --- Mini app: balance via initData ---
 app.get('/api/balance', (req, res) => {
     const initData = req.query.initData || '';
     const user = validateInitData(initData);
@@ -123,6 +155,12 @@ app.get('/api/balance', (req, res) => {
     res.json({ balance: getBalance(user.id) });
 });
 
+// --- Bot: balance by userId (used by check_balance in bot.py) ---
+app.get('/api/balance/:userId', (req, res) => {
+    res.json({ balance: getBalance(String(req.params.userId)) });
+});
+
+// --- Mini app: spin ---
 app.post('/api/spin-win', (req, res) => {
     const { initData, number } = req.body;
     const user = validateInitData(initData);
@@ -140,7 +178,7 @@ app.post('/api/spin-win', (req, res) => {
     // Deduct the spin cost first
     changeBalance(user.id, -SPIN_COST);
 
-    // Spin the wheel
+    // Spin the wheel — decided here on the server, never trusted from the client
     const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
     const won = winningNumber === number;
     const amount = won ? SPIN_COST * SPIN_PAYOUT_MULTIPLIER : 0;
@@ -155,6 +193,60 @@ app.post('/api/spin-win', (req, res) => {
         amount,
         balance: getBalance(user.id),
     });
+});
+
+// --- Bot: deposit request (creates a pending order, does NOT change balance) ---
+app.post('/api/deposit/request', (req, res) => {
+    const { userId, amount } = req.body;
+    if (!userId || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'Invalid request' });
+    }
+    const orderId = createOrder('deposit', String(userId), amount);
+    res.json({ orderId });
+});
+
+// --- Bot: admin confirms deposit (the ONLY place a deposit increases balance) ---
+app.post('/api/deposit/confirm', (req, res) => {
+    const { orderId, adminId } = req.body;
+    const order = ordersData.orders[orderId];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+
+    order.status = 'confirmed';
+    order.confirmedBy = adminId;
+    saveOrders(ordersData);
+
+    const newBalance = changeBalance(order.userId, order.amount);
+    res.json({ userId: order.userId, balance: newBalance });
+});
+
+// --- Bot: admin rejects deposit (no balance change) ---
+app.post('/api/deposit/reject', (req, res) => {
+    const { orderId, adminId } = req.body;
+    const order = ordersData.orders[orderId];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+
+    order.status = 'rejected';
+    order.rejectedBy = adminId;
+    saveOrders(ordersData);
+
+    res.json({ userId: order.userId });
+});
+
+// --- Bot: withdraw request (deducts immediately, registers a pending payout) ---
+app.post('/api/withdraw/request', (req, res) => {
+    const { userId, amount } = req.body;
+    if (!userId || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: 'Invalid request' });
+    }
+    const currentBalance = getBalance(String(userId));
+    if (currentBalance < amount) {
+        return res.status(400).json({ error: 'በቂ ቀሪ ሂሳብ የለዎትም' });
+    }
+    changeBalance(String(userId), -amount);
+    const orderId = createOrder('withdraw', String(userId), amount);
+    res.json({ orderId, balance: getBalance(String(userId)) });
 });
 
 app.listen(PORT, () => {
