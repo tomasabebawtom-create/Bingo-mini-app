@@ -15,8 +15,14 @@ bot = telebot.TeleBot(TOKEN)
 ADMIN_IDS = [123456789]  # <-- ካገኘህ በኋላ እዚህ ተካ
 TELEBIRR_NUMBER = '0940501400'
 
-SERVER_URL = 'http://localhost:3000/api'
-REQUEST_TIMEOUT = 15
+# ✅ ተስተካክሏል፦ ወደ ትክክለኛው production backend (Render) ቀጥታ ይጠቁማል።
+# ቀድሞ 'http://localhost:3000/api' ስለነበር ቦቱ ራሱን ብቻ ነበር የሚደውለው
+# እና ምላሽ ስለማያገኝ REQUEST_TIMEOUT (15 ሰከንድ) ሙሉ ይጠብቅ ነበር -> ለዚህ ነው የዘገየው።
+SERVER_URL = 'https://bingo-mini-app-1.onrender.com/api'
+
+# ✅ ወርዷል፦ 15 -> 8 ሰከንድ። ሰርቨሩ ችግር ካለበት ቦቱ ፈጥኖ error ይመልሳል
+# እንጂ ተጠቃሚው ረዥም ጊዜ "typing..." ብቻ አያይም።
+REQUEST_TIMEOUT = 8
 
 # Spin Win mini app URL — Render ላይ ቀጥታ (live) የተሰቀለው ገጽ
 SPIN_WIN_URL = 'https://bingo-mini-app-1.onrender.com'
