@@ -1,12 +1,13 @@
 // ==================================================================
 // Spin and Win — Backend Server
 // ==================================================================
-// Express API that serves /api/balance and /api/spin-win for the
-// Telegram Mini App (index.html), plus /api/deposit and /api/withdraw
-// routes used by bot.py. Validates Telegram initData using the bot
-// token (set as BOT_TOKEN environment variable — never put the real
-// token directly in this file). Balances and orders are stored in
-// local JSON files so they survive server restarts.
+// Express API that serves /api/balance, /api/place-ticket and
+// /api/round-result for the Telegram Mini App (index.html), plus
+// /api/deposit and /api/withdraw routes used by bot.py. Validates
+// Telegram initData using the bot token (set as BOT_TOKEN environment
+// variable — never put the real token directly in this file).
+// Balances and orders are stored in local JSON files so they survive
+// server restarts.
 // ==================================================================
 
 const express = require('express');
@@ -26,6 +27,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || ''; // set this before starting the s
 const STARTING_BALANCE = 0; // new players start at 0 — balance only grows via admin-approved deposit or a spin win
 const SPIN_COST = 10;
 const SPIN_PAYOUT_MULTIPLIER = 36; // straight-up roulette payout (35:1 winnings + stake back = 36x)
+const ROUND_LENGTH = 30; // must match ROUND_LENGTH in index.html
 const BALANCES_FILE = path.join(__dirname, 'balances.json');
 const ORDERS_FILE = path.join(__dirname, 'orders.json');
 
@@ -38,7 +40,7 @@ function colorFor(n) {
     if (n === 0) return 'green';
     return RED_NUMBERS.has(n) ? 'red' : 'black';
 }
-// Payout multiplier per bet type (applied to SPIN_COST; straight number keeps the old 36x)
+// Payout multiplier per bet type (applied to stake; straight number keeps the old 36x)
 const EVEN_MONEY_MULTIPLIER = 2; // red/black/odd/even/low/high pay 1:1 (get stake back + 1x)
 const DOZEN_MULTIPLIER = 3;      // dozens pay 2:1 (get stake back + 2x)
 const COLUMN_MULTIPLIER = 3;     // columns pay 2:1 (get stake back + 2x)
@@ -159,6 +161,16 @@ function parseUnsafe(initData) {
     }
 }
 
+// -------------------- Synchronized round state (in-memory) --------------------
+// Structure: { [roundId]: { [userId]: { betType, numbers, stake, ticketId } } }
+const roundTickets = {};
+// Structure: { [roundId]: { winning_number, winning_color } }
+const resolvedRounds = {};
+
+function currentRoundId() {
+    return Math.floor(Date.now() / 1000 / ROUND_LENGTH);
+}
+
 // -------------------- Routes --------------------
 app.get('/', (req, res) => {
     res.send('Spin and Win API server is running');
@@ -178,8 +190,124 @@ app.get('/api/balance/:userId', (req, res) => {
     res.json({ balance: getBalance(String(req.params.userId)) });
 });
 
-// --- Mini app: spin ---
-// betType: 'number' | 'red' | 'black' | 'odd' | 'even'
+// --- Mini app: place a ticket for the CURRENT synchronized round ---
+app.post('/api/place-ticket', (req, res) => {
+    const { initData, round, betType, numbers } = req.body;
+    const user = validateInitData(initData);
+    if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
+
+    if (round !== currentRoundId()) {
+        return res.status(400).json({ error: 'ዙሩ ተዘግቷል፣ እባክዎ ቀጣዩን ዙር ይጠብቁ' });
+    }
+
+    const VALID_TYPES = [
+        'number', 'red', 'black', 'odd', 'even',
+        'dozen1', 'dozen2', 'dozen3',
+        'low', 'high',
+    ];
+    if (!VALID_TYPES.includes(betType)) {
+        return res.status(400).json({ error: 'ልክ ያልሆነ የውርርድ አይነት' });
+    }
+
+    let stake = SPIN_COST;
+    if (betType === 'number') {
+        if (!Array.isArray(numbers) || numbers.length === 0) {
+            return res.status(400).json({ error: 'ቢያንስ አንድ ቁጥር ይምረጡ' });
+        }
+        for (const n of numbers) {
+            if (typeof n !== 'number' || n < 0 || n > 36) {
+                return res.status(400).json({ error: 'ልክ ያልሆነ ቁጥር' });
+            }
+        }
+        stake = numbers.length * SPIN_COST;
+    }
+
+    const balance = getBalance(user.id);
+    if (balance < stake) {
+        return res.status(400).json({ error: 'በቂ ሂሳብ የለዎትም' });
+    }
+
+    changeBalance(user.id, -stake);
+
+    if (!roundTickets[round]) roundTickets[round] = {};
+    const ticketId = `${round}-${user.id}`;
+    roundTickets[round][user.id] = { betType, numbers: numbers || [], stake, ticketId };
+
+    res.json({ ticket_id: ticketId, balance: getBalance(user.id) });
+});
+
+// --- Mini app: get (or compute once) the result for a given round ---
+app.get('/api/round-result', (req, res) => {
+    const initData = req.query.initData || '';
+    const round = parseInt(req.query.round, 10);
+    const ticketId = req.query.ticket_id;
+    const user = validateInitData(initData);
+    if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
+
+    // Decide the winning number the FIRST time this round is asked about,
+    // then reuse it for every subsequent request so all players see the
+    // same result even if their devices call this a few ms apart.
+    if (!resolvedRounds[round]) {
+        const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
+        resolvedRounds[round] = {
+            winning_number: winningNumber,
+            winning_color: colorFor(winningNumber),
+        };
+    }
+    const { winning_number, winning_color } = resolvedRounds[round];
+
+    let won = false;
+    let amount = 0;
+
+    const ticket = roundTickets[round] && roundTickets[round][user.id];
+    if (ticket && ticket.ticketId === ticketId) {
+        if (ticket.betType === 'number') {
+            if (ticket.numbers.includes(winning_number)) {
+                won = true;
+                amount = SPIN_COST * SPIN_PAYOUT_MULTIPLIER;
+            }
+        } else if (ticket.betType === 'red' || ticket.betType === 'black') {
+            won = winning_color === ticket.betType;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'odd') {
+            won = winning_number !== 0 && winning_number % 2 === 1;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'even') {
+            won = winning_number !== 0 && winning_number % 2 === 0;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'low') {
+            won = winning_number >= 1 && winning_number <= 18;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'high') {
+            won = winning_number >= 19 && winning_number <= 36;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'dozen1') {
+            won = winning_number >= 1 && winning_number <= 12;
+            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
+        } else if (ticket.betType === 'dozen2') {
+            won = winning_number >= 13 && winning_number <= 24;
+            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
+        } else if (ticket.betType === 'dozen3') {
+            won = winning_number >= 25 && winning_number <= 36;
+            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
+        }
+
+        if (won && amount > 0) {
+            changeBalance(user.id, amount);
+        }
+    }
+
+    res.json({
+        winning_number,
+        winning_color,
+        won,
+        amount,
+        balance: getBalance(user.id),
+    });
+});
+
+// --- Mini app (legacy): instant spin — kept for backward compatibility ---
+// betType: 'number' | 'red' | 'black' | 'odd' | 'even' | ...
 // betValue: only required when betType === 'number' (0-36)
 app.post('/api/spin-win', (req, res) => {
     const { initData, betType, betValue, number } = req.body;
