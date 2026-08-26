@@ -7,20 +7,20 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root{
-    --bg1:#1c1140; --bg2:#2b1a5e; --bg3:#150c30;
-    --gold:#f5c542; --gold-dim:#8a6d1f;
-    --red:#e0501f; --red2:#c94418;
-    --black:#241455; --black2:#150c30;
-    --green:#18b673; --blue:#3a63e0;
-    --text:#f4f0ff; --text-dim:#b9aee0;
+    --bg1:#123a24; --bg2:#0d2e1c; --bg3:#081c12;
+    --gold:#e8c15c; --gold-dim:#8a6d1f;
+    --red:#a2170f; --red2:#7c0f09;
+    --black:#141414; --black2:#0a0a0a;
+    --green:#1e8a54; --blue:#3a63e0;
+    --text:#f4ede0; --text-dim:#b7ab8f;
     --felt:#0d4a2c; --felt2:#0a3a22;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;height:100%;font-family:'Segoe UI',system-ui,sans-serif;}
   body{
     background:
-      radial-gradient(circle at 20% 0%, #3a2470 0%, transparent 55%),
-      radial-gradient(circle at 100% 100%, #241455 0%, transparent 50%),
+      radial-gradient(circle at 20% 0%, #1f5c38 0%, transparent 55%),
+      radial-gradient(circle at 100% 100%, #0d2e1c 0%, transparent 50%),
       linear-gradient(180deg, var(--bg1), var(--bg3));
     color:var(--text); min-height:100vh; overflow-x:hidden;
   }
@@ -30,11 +30,11 @@
   .logo{width:38px;height:38px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#ffd76b,#e0501f);
     display:flex;align-items:center;justify-content:center;font-weight:800;color:#2b1140;font-size:18px;
     box-shadow:0 0 0 2px var(--gold), 0 4px 10px rgba(0,0,0,.4);}
-  .brand{font-size:19px;font-weight:800;letter-spacing:.3px;}
+  .brand{font-size:20px;font-weight:800;letter-spacing:.6px; font-family:Georgia,'Times New Roman',serif;}
   .brand span{color:var(--gold);}
 
   .wallet-row{display:flex; gap:8px; margin-bottom:16px;}
-  .wallet-chip{flex:1; background:linear-gradient(160deg,#2c1c5c,#1c1140); border:1px solid #4b3496;
+  .wallet-chip{flex:1; background:linear-gradient(160deg,#173d27,#0d2416); border:1px solid var(--gold-dim);
     border-radius:14px; padding:10px 8px; text-align:center;}
   .wallet-chip .label{font-size:11px; color:var(--text-dim); margin-bottom:2px;}
   .wallet-chip .value{font-size:18px; font-weight:800; color:var(--gold);}
@@ -64,7 +64,7 @@
     text-shadow:0 1px 2px rgba(0,0,0,.6);}
 
   .history-corner{width:100%; margin-bottom:8px;
-    background:linear-gradient(160deg,#2c1c5c,#1c1140); border:1px solid var(--gold-dim); border-radius:10px;
+    background:linear-gradient(160deg,#173d27,#0d2416); border:1px solid var(--gold-dim); border-radius:10px;
     padding:6px 8px; box-shadow:0 4px 10px rgba(0,0,0,.4);}
   .hc-title{font-size:10px; color:var(--text-dim); font-weight:700; margin-bottom:5px;}
   .history-strip{display:grid; grid-template-rows:repeat(2,1fr); grid-auto-flow:column; gap:5px; overflow-x:auto; padding-bottom:2px;}
@@ -76,7 +76,7 @@
   .hist-empty{font-size:11px; color:var(--text-dim); white-space:nowrap;}
 
   .timer-badge{position:absolute; top:-4px; right:-4px; z-index:9; width:52px; height:52px; border-radius:50%;
-    background:radial-gradient(circle at 35% 28%, #3a2470, #1c1140); border:2px solid var(--gold);
+    background:radial-gradient(circle at 35% 28%, #1f5c38, #0d2416); border:2px solid var(--gold);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     box-shadow:0 4px 10px rgba(0,0,0,.5);}
   .timer-badge .tb-count{font-size:17px; font-weight:900; color:var(--gold); line-height:1;}
@@ -140,7 +140,8 @@
   .stake-chip.active{background:linear-gradient(90deg,var(--gold),#e0a92f); color:#2b1140; border-color:var(--gold);
     box-shadow:0 0 8px rgba(245,197,66,.5);}
 
-  .confirm-btn{width:100%; border:none; border-radius:14px; padding:14px; margin-top:8px;
+  .confirm-btn{width:100%; border:none; border-radius:10px; padding:14px; margin-top:8px;
+    font-family:Georgia,'Times New Roman',serif; letter-spacing:.4px;
     font-size:17px; font-weight:800; color:#2b1140; background:linear-gradient(90deg,var(--gold),#e0a92f);
     box-shadow:0 6px 16px rgba(245,197,66,.35); cursor:pointer;}
   .confirm-btn:disabled{opacity:.4; cursor:default;}
@@ -149,7 +150,7 @@
   .marked-count{text-align:center; font-size:12px; color:var(--text-dim); margin-top:6px;}
   .marked-count b{color:var(--gold);}
 
-  .msg{position:fixed; top:14px; left:50%; transform:translateX(-50%); background:#2b1140; border:1px solid var(--gold);
+  .msg{position:fixed; top:14px; left:50%; transform:translateX(-50%); background:#0d2416; border:1px solid var(--gold);
     color:var(--text); padding:10px 18px; border-radius:12px; font-size:13px; font-weight:700; z-index:50; display:none;
     box-shadow:0 6px 16px rgba(0,0,0,.4); max-width:88%; text-align:center;}
 </style>
