@@ -95,7 +95,10 @@ function saveOrders(data) {
 
 let ordersData = loadOrders();
 
-function createOrder(type, userId, amount) {
+// `extra` lets callers attach extra fields to an order (e.g. the payout
+// phone number for a withdraw request) without changing the function
+// signature for every order type.
+function createOrder(type, userId, amount, extra = {}) {
     const orderId = String(ordersData.nextId++);
     ordersData.orders[orderId] = {
         type,
@@ -103,6 +106,7 @@ function createOrder(type, userId, amount) {
         amount,
         status: 'pending',
         createdAt: new Date().toISOString(),
+        ...extra,
     };
     saveOrders(ordersData);
     return orderId;
@@ -305,22 +309,24 @@ app.post('/api/deposit/reject', (req, res) => {
 });
 
 // --- Bot: withdraw request (deducts immediately, registers a pending payout) ---
+// `phone` is the Telebirr number the user wants the payout sent to. bot.py
+// collects it right after the amount and passes it along here so it gets
+// stored on the order and shown to the admin.
 app.post('/api/withdraw/request', (req, res) => {
-    const { userId, amount } = req.body;
+    const { userId, amount, phone } = req.body;
     if (!userId || typeof amount !== 'number' || amount <= 0) {
         return res.status(400).json({ error: 'Invalid request' });
+    }
+    if (!phone || typeof phone !== 'string' || !phone.trim()) {
+        return res.status(400).json({ error: 'Phone number required' });
     }
     const currentBalance = getBalance(String(userId));
     if (currentBalance < amount) {
         return res.status(400).json({ error: 'በቂ ቀሪ ሂሳብ የለዎትም' });
     }
     changeBalance(String(userId), -amount);
-    const orderId = createOrder('withdraw', String(userId), amount);
+    const orderId = createOrder('withdraw', String(userId), amount, { phone: phone.trim() });
     res.json({ orderId, balance: getBalance(String(userId)) });
-});
-
-app.listen(PORT, () => {
-    console.log(`Spin and Win API server listening on port ${PORT}`);
 });
 
 // --- Bot: admin confirms withdraw (money already sent via Telebirr) ---
@@ -350,4 +356,8 @@ app.post('/api/withdraw/reject', (req, res) => {
     saveOrders(ordersData);
 
     res.json({ userId: order.userId, balance: getBalance(String(order.userId)) });
+});
+
+app.listen(PORT, () => {
+    console.log(`Spin and Win API server listening on port ${PORT}`);
 });
