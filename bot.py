@@ -12,7 +12,7 @@ bot = telebot.TeleBot(TOKEN)
 
 # የአድሚኖች Telegram user ID ዝርዝር - እነዚህ ብቻ ናቸው ተቀማጭ የሚያጸድቁት
 # የራስህን ID ለማወቅ ቦቱ ላይ /myid ብቻ ላክ
-ADMIN_IDS = [123456789]  # <-- ካገኘህ በኋላ እዚህ ተካ
+ADMIN_IDS = [8706330167]  # <-- ካገኘህ በኋላ እዚህ ተካ
 TELEBIRR_NUMBER = '0940501400'
 
 # ✅ ተስተካክሏል፦ ወደ ትክክለኛው production backend (Render) ቀጥታ ይጠቁማል።
