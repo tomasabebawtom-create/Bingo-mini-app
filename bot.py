@@ -37,26 +37,46 @@ def is_command(message):
     return bool(message.text) and message.text.startswith('/')
 
 
-# ============================================================
-# ✅ ተስተካክሏል፦ /start አሁን ትልቅ የቁልፎች ፍርግርግ (grid) አይልክም።
-#    "🎡 Play / Spin Win" ብቻ እንደ ቁልፍ ይላካል (mini app ስለሆነ
-#    button መሆን አለበት)።
-#    የቀሩት (Register, Balance, Deposit, Support, Instruction, Transfer,
-#    Withdraw, Invite, Convert Bonus) ሁሉም ወደ ☰ Menu ትዕዛዞች ተቀይረዋል፣
-#    ከታች ይመልከቱ።
-# ============================================================
+def build_main_menu():
+    """
+    ✅ ወደነበረበት ተመልሷል፦ /start ሲላክ ሙሉ ፍርግርግ (grid) ቁልፎች ይላካሉ።
+    "Play / Spin Win" ብቻ web_app ቁልፍ ነው (mini app ስለሆነ)፣
+    የቀሩት ደግሞ callback_data ቁልፎች ናቸው።
+    """
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🎡 Play / Spin Win", web_app=types.WebAppInfo(SPIN_WIN_URL)),
+        types.InlineKeyboardButton("📝 Register", callback_data="register"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("💵 Check Balance", callback_data="check_balance"),
+        types.InlineKeyboardButton("💵 Deposit", callback_data="deposit"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("☎️ Contact Support", callback_data="support"),
+        types.InlineKeyboardButton("📖 Instruction", callback_data="instruction"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("🎁 Transfer", callback_data="transfer"),
+        types.InlineKeyboardButton("🤑 Withdraw", callback_data="withdraw"),
+    )
+    markup.add(
+        types.InlineKeyboardButton("🔗 Invite", callback_data="invite"),
+        types.InlineKeyboardButton("🎫 Convert Bonus", callback_data="convert_bonus"),
+    )
+    return markup
+
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     text = (
         "👋 እንኳን ደህና መጡ ወደ 1 Bingo!\n\n"
-        "🎡 ለመጫወት ከታች ያለውን ቁልፍ ይጫኑ፣ ወይም ☰ Menu ውስጥ ካሉት ትዕዛዞች ይምረጡ።"
+        "🎡 ለመጫወት ከታች ካሉት ቁልፎች ይምረጡ፣ ወይም ☰ Menu ውስጥ ካሉት ትዕዛዞች ይጠቀሙ።"
     )
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🎡 Play / Spin Win", web_app=types.WebAppInfo(SPIN_WIN_URL)))
-    bot.send_message(message.chat.id, text, reply_markup=markup)
+    bot.send_message(message.chat.id, text, reply_markup=build_main_menu())
 
 
-@bot.message_handler(commands=['spin'])
+@bot.message_handler(commands=['play'])
 def open_spin_win(message):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎡 Spin Win ክፈት", web_app=types.WebAppInfo(SPIN_WIN_URL)))
@@ -95,10 +115,6 @@ def withdraw_command(message):
     bot.register_next_step_handler(msg, process_withdraw_amount)
 
 
-# ============================================================
-# ✅ አዲስ፦ ቀድሞ callback_data (ቁልፍ) ብቻ የነበሩት አማራጮች
-#    አሁን እንደ ☰ Menu ትዕዛዝም ይሰራሉ።
-# ============================================================
 @bot.message_handler(commands=['register'])
 def register_command(message):
     bot.send_message(message.chat.id, "📝 Register: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
@@ -195,10 +211,6 @@ def confirm_or_reject_command(message):
         bot.reply_to(message, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
 
-# ============================================================
-# callback_query_handler አሁንም ይቀራል (ለ Approve/Reject ቁልፎች
-# አድሚኖች ለሚጠቀሙት)።
-# ============================================================
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     if call.data == "deposit":
