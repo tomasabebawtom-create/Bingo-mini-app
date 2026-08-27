@@ -456,8 +456,8 @@ def process_deposit_amount(message):
 
         order_id = response.json().get('orderId')
 
-        bot.reply_to(
-            message,
+        bot.send_message(
+            message.chat.id,
             f"1. ከታች ባለው የቴሌብር አካውንት {amount} ብር ያስገቡ\n\n"
             f"Phone: {TELEBIRR_NUMBER}\n\n"
             f"ከላኩ በኋላ ገንዘብዎ ይጨምርልዎታል።"
