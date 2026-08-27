@@ -13,8 +13,9 @@ const PORT = process.env.PORT || 3000;
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const STARTING_BALANCE = 0;
-const SPIN_COST = 10;
-const SPIN_PAYOUT_MULTIPLIER = 36;
+const STAKE_OPTIONS = [5, 10, 20, 30, 40, 50]; // must match frontend STAKE_OPTIONS
+const MAX_NUMBERS = 8; // must match frontend MAX_NUMBERS
+const SPIN_PAYOUT_MULTIPLIER = 36; // straight-up number bet: total return = perNumberStake * 36
 const ROUND_LENGTH = 50; // must match frontend BET_LENGTH(40) + SPIN_LENGTH(10)
 
 const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
@@ -152,26 +153,35 @@ app.post('/api/place-ticket', async function (req, res) {
     const round = req.body.round;
     const betType = req.body.betType;
     const numbers = req.body.numbers;
+    const requestedStake = req.body.stake;
     const user = validateInitData(initData);
     if (!user) return res.status(401).json({ error: 'invalid initData' });
     if (round !== currentRoundId()) return res.status(400).json({ error: 'round closed' });
     const VALID_TYPES = ['number', 'red', 'black', 'odd', 'even', 'dozen1', 'dozen2', 'dozen3', 'low', 'high'];
     if (VALID_TYPES.indexOf(betType) === -1) return res.status(400).json({ error: 'invalid bet type' });
-    let stake = SPIN_COST;
+    if (STAKE_OPTIONS.indexOf(requestedStake) === -1) return res.status(400).json({ error: 'invalid stake' });
+
+    // perNumberStake is what each single number costs / what a single number pays out against.
+    // For outside bets, the whole ticket is one unit at requestedStake.
+    const perNumberStake = requestedStake;
+    let stake = requestedStake;
+
     if (betType === 'number') {
         if (!Array.isArray(numbers) || numbers.length === 0) return res.status(400).json({ error: 'select a number' });
+        if (numbers.length > MAX_NUMBERS) return res.status(400).json({ error: 'too many numbers' });
         for (let i = 0; i < numbers.length; i++) {
             const n = numbers[i];
             if (typeof n !== 'number' || n < 0 || n > 36) return res.status(400).json({ error: 'invalid number' });
         }
-        stake = numbers.length * SPIN_COST;
+        stake = numbers.length * requestedStake; // total cost = one requestedStake per marked number
     }
+
     const balance = await getBalance(user.id);
     if (balance < stake) return res.status(400).json({ error: 'insufficient balance' });
     await changeBalance(user.id, -stake);
     if (!roundTickets[round]) roundTickets[round] = {};
     const ticketId = round + '-' + user.id;
-    roundTickets[round][user.id] = { betType: betType, numbers: numbers || [], stake: stake, ticketId: ticketId };
+    roundTickets[round][user.id] = { betType: betType, numbers: numbers || [], stake: stake, perNumberStake: perNumberStake, ticketId: ticketId };
     res.json({ ticket_id: ticketId, balance: await getBalance(user.id) });
 });
 
@@ -192,7 +202,8 @@ app.get('/api/round-result', async function (req, res) {
     const ticket = roundTickets[round] && roundTickets[round][user.id];
     if (ticket && ticket.ticketId === ticketId) {
         if (ticket.betType === 'number') {
-            if (ticket.numbers.indexOf(winning_number) !== -1) { won = true; amount = SPIN_COST * SPIN_PAYOUT_MULTIPLIER; }
+            // pays perNumberStake * 36 (the amount actually risked on THAT single number), not the ticket total
+            if (ticket.numbers.indexOf(winning_number) !== -1) { won = true; amount = ticket.perNumberStake * SPIN_PAYOUT_MULTIPLIER; }
         } else if (ticket.betType === 'red' || ticket.betType === 'black') {
             won = winning_color === ticket.betType;
             amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
