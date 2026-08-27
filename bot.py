@@ -15,60 +15,122 @@ bot = telebot.TeleBot(TOKEN)
 ADMIN_IDS = [8706330167]  # <-- ካገኘህ በኋላ እዚህ ተካ
 TELEBIRR_NUMBER = '0940501400'
 
-# ✅ ተስተካክሏል፦ ወደ ትክክለኛው production backend (Render) ቀጥታ ይጠቁማል።
-# ቀድሞ 'http://localhost:3000/api' ስለነበር ቦቱ ራሱን ብቻ ነበር የሚደውለው
-# እና ምላሽ ስለማያገኝ REQUEST_TIMEOUT (15 ሰከንድ) ሙሉ ይጠብቅ ነበር -> ለዚህ ነው የዘገየው።
+# ✅ ወደ ትክክለኛው production backend (Render) ቀጥታ ይጠቁማል።
 SERVER_URL = 'https://bingo-mini-app-1.onrender.com/api'
-
-# ✅ ወርዷል፦ 15 -> 8 ሰከንድ። ሰርቨሩ ችግር ካለበት ቦቱ ፈጥኖ error ይመልሳል
-# እንጂ ተጠቃሚው ረዥም ጊዜ "typing..." ብቻ አያይም።
 REQUEST_TIMEOUT = 8
 
 # Spin Win mini app URL — Render ላይ ቀጥታ (live) የተሰቀለው ገጽ
 SPIN_WIN_URL = 'https://bingo-mini-app-1.onrender.com'
 
 
-def main_menu():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🎡 Play / Spin Win", web_app=types.WebAppInfo(SPIN_WIN_URL)),
-        types.InlineKeyboardButton("Register 📝", callback_data="register"),
-        types.InlineKeyboardButton("Check Balance 💵", callback_data="check_balance"),
-        types.InlineKeyboardButton("Deposit 💵", callback_data="deposit"),
-        types.InlineKeyboardButton("Contact Support ☎️", callback_data="support"),
-        types.InlineKeyboardButton("Instruction 📖", callback_data="instruction"),
-        types.InlineKeyboardButton("Transfer 🎁", callback_data="transfer"),
-        types.InlineKeyboardButton("Withdraw 🤑", callback_data="withdraw"),
-        types.InlineKeyboardButton("Invite 🔗", callback_data="invite"),
-        types.InlineKeyboardButton("Convert Bonus 🎫", callback_data="convert_bonus"),
-    )
-    return markup
-
-
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
 
+def is_command(message):
+    """
+    ተጠቃሚው በ deposit/withdraw ፍሰት መሃል ላይ ሆኖ '/' በሚጀምር
+    ትዕዛዝ (ለምሳሌ /start, /deposit, /newgame) ቢልክ True ይመልሳል።
+    ይህ register_next_step_handler ን ለማቋረጥ ይጠቅማል፣
+    ስለዚህ ትዕዛዞች እንደ "የገንዘብ መጠን" ወይም "ስልክ ቁጥር" ተደርገው አይያዙም።
+    """
+    return bool(message.text) and message.text.startswith('/')
+
+
+# ============================================================
+# ✅ ተስተካክሏል፦ /start አሁን ትልቅ የቁልፎች ፍርግርግ (grid) አይልክም።
+#    "🎡 Play / Spin Win" ብቻ እንደ ቁልፍ ይላካል (mini app ስለሆነ
+#    button መሆን አለበት)።
+#    የቀሩት (Register, Balance, Deposit, Support, Instruction, Transfer,
+#    Withdraw, Invite, Convert Bonus) ሁሉም ወደ ☰ Menu ትዕዛዞች ተቀይረዋል፣
+#    ከታች ይመልከቱ።
+# ============================================================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    text = "👋 እንኳን ደህና መጡ ወደ 1 Bingo! ከዚህ በታች ካሉት አማራጮች አንዱን ይምረጡ:-"
-    bot.send_message(message.chat.id, text, reply_markup=main_menu())
+    text = (
+        "👋 እንኳን ደህና መጡ ወደ 1 Bingo!\n\n"
+        "🎡 ለመጫወት ከታች ያለውን ቁልፍ ይጫኑ፣ ወይም ☰ Menu ውስጥ ካሉት ትዕዛዞች ይምረጡ።"
+    )
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎡 Play / Spin Win", web_app=types.WebAppInfo(SPIN_WIN_URL)))
+    bot.send_message(message.chat.id, text, reply_markup=markup)
 
 
 @bot.message_handler(commands=['spin'])
 def open_spin_win(message):
-    """ልክ እንደ ቢንጎ /app ትዕዛዝ - Spin Win ገጹን በ WebApp ቁልፍ ይከፍታል"""
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎡 Spin Win ክፈት", web_app=types.WebAppInfo(SPIN_WIN_URL)))
     bot.send_message(message.chat.id, "🎡 Spin Win ለመጫወት ከታች ይጫኑ፡", reply_markup=markup)
 
 
+@bot.message_handler(commands=['balance'])
+def check_balance_command(message):
+    user_id = str(message.from_user.id)
+    try:
+        resp = requests.get(f"{SERVER_URL}/balance/{user_id}", timeout=REQUEST_TIMEOUT)
+        if resp.status_code == 200:
+            bal = resp.json().get('balance', 0)
+            bot.send_message(message.chat.id, f"💰 የኪስ ቦርሳ ሂሳብዎ: {bal} ብር ነው።")
+        else:
+            bot.send_message(message.chat.id, "ሂሳብ ማግኘት አልተቻለም።")
+    except requests.exceptions.RequestException:
+        bot.send_message(message.chat.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
+
+
+@bot.message_handler(commands=['deposit'])
+def deposit_command(message):
+    msg = bot.send_message(
+        message.chat.id,
+        "💳 የመቀማት (deposit) መጠን ብቻ ላክ (ለምሳሌ: 100)"
+    )
+    bot.register_next_step_handler(msg, process_deposit_amount)
+
+
+@bot.message_handler(commands=['withdraw'])
+def withdraw_command(message):
+    msg = bot.send_message(
+        message.chat.id,
+        "🤑 የማውጣት (withdraw) መጠን ብቻ ላክ (ለምሳሌ: 100)"
+    )
+    bot.register_next_step_handler(msg, process_withdraw_amount)
+
+
+# ============================================================
+# ✅ አዲስ፦ ቀድሞ callback_data (ቁልፍ) ብቻ የነበሩት አማራጮች
+#    አሁን እንደ ☰ Menu ትዕዛዝም ይሰራሉ።
+# ============================================================
+@bot.message_handler(commands=['register'])
+def register_command(message):
+    bot.send_message(message.chat.id, "📝 Register: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+
+
+@bot.message_handler(commands=['support'])
+def support_command(message):
+    bot.send_message(message.chat.id, "☎️ Contact Support: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+
+
+@bot.message_handler(commands=['instruction'])
+def instruction_command(message):
+    bot.send_message(message.chat.id, "📖 Instruction: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+
+
+@bot.message_handler(commands=['transfer'])
+def transfer_command(message):
+    bot.send_message(message.chat.id, "🎁 Transfer: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+
+
+@bot.message_handler(commands=['invite'])
+def invite_command(message):
+    bot.send_message(message.chat.id, "🔗 Invite: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+
+
+@bot.message_handler(commands=['convertbonus'])
+def convert_bonus_command(message):
+    bot.send_message(message.chat.id, "🎫 Convert Bonus: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+
+
 @bot.message_handler(commands=['myid'])
 def send_my_id(message):
-    """
-    ራስህ የ Telegram user ID ለማወቅ - ADMIN_IDS ውስጥ ለማስገባት ይጠቅማል።
-    ውጫዊ bot (@userinfobot) መጠቀም አያስፈልግም, ይህ ቦት ራሱ ያሳይሃል።
-    """
     uid = message.from_user.id
     uname = message.from_user.username or "(username የለውም)"
     bot.reply_to(
@@ -82,11 +144,6 @@ def send_my_id(message):
 
 @bot.message_handler(commands=['confirm', 'reject'])
 def confirm_or_reject_command(message):
-    """
-    አድሚን-ብቻ ትዕዛዝ፦ /confirm <order_id> ወይም /reject <order_id>
-    አድሚኑ ገንዘቡ በስልኩ (Telebirr) ላይ በእጅ አረጋግጦ ይህን ትዕዛዝ ይልካል።
-    ከ Approve/Reject ቁልፎቹ ጋር ተመሳሳይ ውጤት አለው - ተመሳሳይ ኤንድፖይንት ይጠቀማል።
-    """
     admin_id = message.from_user.id
 
     if not is_admin(admin_id):
@@ -138,9 +195,14 @@ def confirm_or_reject_command(message):
         bot.reply_to(message, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
 
+# ============================================================
+# callback_query_handler አሁንም ይቀራል (ለ Approve/Reject ቁልፎች
+# አድሚኖች ለሚጠቀሙት)።
+# ============================================================
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     if call.data == "deposit":
+        bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id,
             "💳 የመቀማት (deposit) መጠን ብቻ ላክ (ለምሳሌ: 100)"
@@ -194,9 +256,11 @@ def callback_query(call):
 
 
 def process_withdraw_amount(message):
-    """
-    መጠኑ ይመዘገባል፣ ቀጥሎ ገንዘብ የሚላክበትን ስልክ ቁጥር (Telebirr) እንዲልክ ተጠቃሚው ይጠየቃል።
-    """
+    if is_command(message):
+        bot.clear_step_handler_by_chat_id(message.chat.id)
+        bot.process_new_messages([message])
+        return
+
     try:
         amount = float(message.text)
         if amount <= 0:
@@ -214,11 +278,11 @@ def process_withdraw_amount(message):
 
 
 def process_withdraw_phone(message, amount):
-    """
-    ገንዘብ ወዲያውኑ ይቀነሳል (server.js /api/withdraw/request እንደዚያ ይሰራል) እና
-    pending ትዕዛዝ ይፈጠራል። አድሚኑ Approve ካደረገ ገንዘቡ በ Telebirr ተልኳል ማለት ብቻ ነው
-    (ቀሪ ሂሳብ ቀድሞውኑ ተቀንሷል)። Reject ካደረገ ግን ገንዘቡ ይመለሳል።
-    """
+    if is_command(message):
+        bot.clear_step_handler_by_chat_id(message.chat.id)
+        bot.process_new_messages([message])
+        return
+
     phone = message.text.strip()
 
     if not phone.isdigit() or len(phone) < 9:
@@ -331,10 +395,11 @@ def handle_withdraw_decision(call, approve):
 
 
 def process_deposit_amount(message):
-    """
-    ገንዘብ አይጨመርም! "pending" ትዕዛዝ ብቻ ይፈጠራል። ገንዘቡ የሚጨመረው አድሚኑ
-    (ከታች handle_admin_decision) Approve ሲጫን ብቻ ነው።
-    """
+    if is_command(message):
+        bot.clear_step_handler_by_chat_id(message.chat.id)
+        bot.process_new_messages([message])
+        return
+
     try:
         amount = float(message.text)
         if amount <= 0:
