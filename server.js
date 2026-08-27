@@ -1,35 +1,31 @@
 // ==================================================================
-// Spin and Win — Backend Server
+// Spin and Win — Backend Server (PostgreSQL version)
 // ==================================================================
-// Express API that serves /api/balance, /api/place-ticket and
-// /api/round-result for the Telegram Mini App (index.html), plus
-// /api/deposit and /api/withdraw routes used by bot.py. Validates
-// Telegram initData using the bot token (set as BOT_TOKEN environment
-// variable — never put the real token directly in this file).
-// Balances and orders are stored in local JSON files so they survive
-// server restarts.
+// Balances and orders are now stored in a PostgreSQL database
+// (Supabase) instead of local JSON files, so they survive Render
+// restarts/redeploys. Set DATABASE_URL and BOT_TOKEN as environment
+// variables on Render.
 // ==================================================================
 
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
+const { Pool } = require('pg');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname)); // serves index.html if it lives alongside this file
+app.use(express.static(__dirname));
 
 // -------------------- Config --------------------
-const PORT = process.env.PORT || 3000; // matches bot.py's SERVER_URL = http://localhost:3000/api
-const BOT_TOKEN = process.env.BOT_TOKEN || ''; // set this before starting the server
-const STARTING_BALANCE = 0; // new players start at 0 — balance only grows via admin-approved deposit or a spin win
+const PORT = process.env.PORT || 3000;
+const BOT_TOKEN = process.env.BOT_TOKEN || '';
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const STARTING_BALANCE = 0;
 const SPIN_COST = 10;
-const SPIN_PAYOUT_MULTIPLIER = 36; // straight-up roulette payout (35:1 winnings + stake back = 36x)
-const ROUND_LENGTH = 30; // must match ROUND_LENGTH in index.html
-const BALANCES_FILE = path.join(__dirname, 'balances.json');
-const ORDERS_FILE = path.join(__dirname, 'orders.json');
+const SPIN_PAYOUT_MULTIPLIER = 36;
+const ROUND_LENGTH = 30;
 
 const WHEEL_ORDER = [
     0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
@@ -40,452 +36,142 @@ function colorFor(n) {
     if (n === 0) return 'green';
     return RED_NUMBERS.has(n) ? 'red' : 'black';
 }
-// Payout multiplier per bet type (applied to stake; straight number keeps the old 36x)
-const EVEN_MONEY_MULTIPLIER = 2; // red/black/odd/even/low/high pay 1:1 (get stake back + 1x)
-const DOZEN_MULTIPLIER = 3;      // dozens pay 2:1 (get stake back + 2x)
-const COLUMN_MULTIPLIER = 3;     // columns pay 2:1 (get stake back + 2x)
+const EVEN_MONEY_MULTIPLIER = 2;
+const DOZEN_MULTIPLIER = 3;
+const COLUMN_MULTIPLIER = 3;
 
-// Column membership (standard roulette layout, top-to-bottom columns)
 const COLUMN_1 = new Set([1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34]);
 const COLUMN_2 = new Set([2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]);
 const COLUMN_3 = new Set([3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]);
 
+// -------------------- Database setup --------------------
+if (!DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not set — balances will NOT persist across restarts!');
+}
+
+const pool = DATABASE_URL
+    ? new Pool({
+        connectionString: DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+    })
+    : null;
+
+// In-memory fallback (used only if DATABASE_URL is missing, e.g. local testing)
+const memBalances = {};
+const memOrders = { nextId: 1, orders: {} };
+
+async function initDb() {
+    if (!pool) return;
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS balances (
+            user_id TEXT PRIMARY KEY,
+            balance NUMERIC NOT NULL DEFAULT 0
+        );
+    `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id SERIAL PRIMARY KEY,
+            type TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            amount NUMERIC NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            phone TEXT,
+            confirmed_by TEXT,
+            rejected_by TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+    `);
+    console.log('✅ Database tables ready');
+}
+
 // -------------------- Balance persistence --------------------
-function loadBalances() {
-    try {
-        const raw = fs.readFileSync(BALANCES_FILE, 'utf8');
-        return JSON.parse(raw);
-    } catch (e) {
-        return {};
+async function getBalance(userId) {
+    if (!pool) {
+        if (!(userId in memBalances)) memBalances[userId] = STARTING_BALANCE;
+        return memBalances[userId];
     }
-}
-
-function saveBalances(balances) {
-    fs.writeFileSync(BALANCES_FILE, JSON.stringify(balances, null, 2));
-}
-
-let balances = loadBalances();
-
-function getBalance(userId) {
-    if (!(userId in balances)) {
-        balances[userId] = STARTING_BALANCE;
-        saveBalances(balances);
+    const result = await pool.query('SELECT balance FROM balances WHERE user_id = $1', [userId]);
+    if (result.rows.length === 0) {
+        await pool.query(
+            'INSERT INTO balances (user_id, balance) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
+            [userId, STARTING_BALANCE]
+        );
+        return STARTING_BALANCE;
     }
-    return balances[userId];
+    return Number(result.rows[0].balance);
 }
 
-function changeBalance(userId, delta) {
-    const current = getBalance(userId);
-    balances[userId] = current + delta;
-    saveBalances(balances);
-    return balances[userId];
-}
-
-// -------------------- Orders persistence (deposit/withdraw) --------------------
-function loadOrders() {
-    try {
-        const raw = fs.readFileSync(ORDERS_FILE, 'utf8');
-        return JSON.parse(raw);
-    } catch (e) {
-        return { nextId: 1, orders: {} };
+async function changeBalance(userId, delta) {
+    if (!pool) {
+        const current = await getBalance(userId);
+        memBalances[userId] = current + delta;
+        return memBalances[userId];
     }
+    await getBalance(userId); // ensure row exists
+    const result = await pool.query(
+        'UPDATE balances SET balance = balance + $2 WHERE user_id = $1 RETURNING balance',
+        [userId, delta]
+    );
+    return Number(result.rows[0].balance);
 }
 
-function saveOrders(data) {
-    fs.writeFileSync(ORDERS_FILE, JSON.stringify(data, null, 2));
+// -------------------- Orders persistence --------------------
+async function createOrder(type, userId, amount, extra = {}) {
+    if (!pool) {
+        const orderId = String(memOrders.nextId++);
+        memOrders.orders[orderId] = {
+            type, userId, amount, status: 'pending',
+            createdAt: new Date().toISOString(), ...extra,
+        };
+        return orderId;
+    }
+    const result = await pool.query(
+        `INSERT INTO orders (type, user_id, amount, phone) VALUES ($1, $2, $3, $4) RETURNING order_id`,
+        [type, userId, amount, extra.phone || null]
+    );
+    return String(result.rows[0].order_id);
 }
 
-let ordersData = loadOrders();
-
-// `extra` lets callers attach extra fields to an order (e.g. the payout
-// phone number for a withdraw request) without changing the function
-// signature for every order type.
-function createOrder(type, userId, amount, extra = {}) {
-    const orderId = String(ordersData.nextId++);
-    ordersData.orders[orderId] = {
-        type,
-        userId,
-        amount,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        ...extra,
+async function getOrder(orderId) {
+    if (!pool) return memOrders.orders[orderId];
+    const result = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+        type: row.type,
+        userId: row.user_id,
+        amount: Number(row.amount),
+        status: row.status,
+        phone: row.phone,
     };
-    saveOrders(ordersData);
-    return orderId;
+}
+
+async function markOrder(orderId, status, adminId) {
+    if (!pool) {
+        const order = memOrders.orders[orderId];
+        if (!order) return;
+        order.status = status;
+        if (status === 'confirmed') order.confirmedBy = adminId;
+        if (status === 'rejected') order.rejectedBy = adminId;
+        return;
+    }
+    const col = status === 'confirmed' ? 'confirmed_by' : 'rejected_by';
+    await pool.query(
+        `UPDATE orders SET status = $2, ${col} = $3 WHERE order_id = $1`,
+        [orderId, status, adminId]
+    );
 }
 
 // -------------------- Telegram initData validation --------------------
-// See: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 function validateInitData(initData) {
     if (!BOT_TOKEN) {
-        // No token configured — allow through but log a warning.
-        // (Only safe for local testing; always set BOT_TOKEN in production.)
         console.warn('⚠️  BOT_TOKEN not set — skipping initData validation!');
         return parseUnsafe(initData);
     }
-
     try {
         const params = new URLSearchParams(initData);
         const hash = params.get('hash');
         params.delete('hash');
 
         const dataCheckArr = [];
-        for (const [key, value] of [...params.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-            dataCheckArr.push(`${key}=${value}`);
-        }
-        const dataCheckString = dataCheckArr.join('\n');
-
-        const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
-        const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-
-        if (computedHash !== hash) return null;
-
-        const userJson = params.get('user');
-        if (!userJson) return null;
-        const user = JSON.parse(userJson);
-        return { id: String(user.id), first_name: user.first_name };
-    } catch (e) {
-        return null;
-    }
-}
-
-function parseUnsafe(initData) {
-    try {
-        const params = new URLSearchParams(initData);
-        const userJson = params.get('user');
-        if (!userJson) return null;
-        const user = JSON.parse(userJson);
-        return { id: String(user.id), first_name: user.first_name };
-    } catch (e) {
-        return null;
-    }
-}
-
-// -------------------- Synchronized round state (in-memory) --------------------
-// Structure: { [roundId]: { [userId]: { betType, numbers, stake, ticketId } } }
-const roundTickets = {};
-// Structure: { [roundId]: { winning_number, winning_color } }
-const resolvedRounds = {};
-
-function currentRoundId() {
-    return Math.floor(Date.now() / 1000 / ROUND_LENGTH);
-}
-
-// -------------------- Routes --------------------
-app.get('/', (req, res) => {
-    res.send('Spin and Win API server is running');
-});
-
-// --- Mini app: balance via initData ---
-app.get('/api/balance', (req, res) => {
-    const initData = req.query.initData || '';
-    const user = validateInitData(initData);
-    if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
-
-    res.json({ balance: getBalance(user.id) });
-});
-
-// --- Bot: balance by userId (used by check_balance in bot.py) ---
-app.get('/api/balance/:userId', (req, res) => {
-    res.json({ balance: getBalance(String(req.params.userId)) });
-});
-
-// --- Mini app: place a ticket for the CURRENT synchronized round ---
-app.post('/api/place-ticket', (req, res) => {
-    const { initData, round, betType, numbers } = req.body;
-    const user = validateInitData(initData);
-    if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
-
-    if (round !== currentRoundId()) {
-        return res.status(400).json({ error: 'ዙሩ ተዘግቷል፣ እባክዎ ቀጣዩን ዙር ይጠብቁ' });
-    }
-
-    const VALID_TYPES = [
-        'number', 'red', 'black', 'odd', 'even',
-        'dozen1', 'dozen2', 'dozen3',
-        'low', 'high',
-    ];
-    if (!VALID_TYPES.includes(betType)) {
-        return res.status(400).json({ error: 'ልክ ያልሆነ የውርርድ አይነት' });
-    }
-
-    let stake = SPIN_COST;
-    if (betType === 'number') {
-        if (!Array.isArray(numbers) || numbers.length === 0) {
-            return res.status(400).json({ error: 'ቢያንስ አንድ ቁጥር ይምረጡ' });
-        }
-        for (const n of numbers) {
-            if (typeof n !== 'number' || n < 0 || n > 36) {
-                return res.status(400).json({ error: 'ልክ ያልሆነ ቁጥር' });
-            }
-        }
-        stake = numbers.length * SPIN_COST;
-    }
-
-    const balance = getBalance(user.id);
-    if (balance < stake) {
-        return res.status(400).json({ error: 'በቂ ሂሳብ የለዎትም' });
-    }
-
-    changeBalance(user.id, -stake);
-
-    if (!roundTickets[round]) roundTickets[round] = {};
-    const ticketId = `${round}-${user.id}`;
-    roundTickets[round][user.id] = { betType, numbers: numbers || [], stake, ticketId };
-
-    res.json({ ticket_id: ticketId, balance: getBalance(user.id) });
-});
-
-// --- Mini app: get (or compute once) the result for a given round ---
-app.get('/api/round-result', (req, res) => {
-    const initData = req.query.initData || '';
-    const round = parseInt(req.query.round, 10);
-    const ticketId = req.query.ticket_id;
-    const user = validateInitData(initData);
-    if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
-
-    // Decide the winning number the FIRST time this round is asked about,
-    // then reuse it for every subsequent request so all players see the
-    // same result even if their devices call this a few ms apart.
-    if (!resolvedRounds[round]) {
-        const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
-        resolvedRounds[round] = {
-            winning_number: winningNumber,
-            winning_color: colorFor(winningNumber),
-        };
-    }
-    const { winning_number, winning_color } = resolvedRounds[round];
-
-    let won = false;
-    let amount = 0;
-
-    const ticket = roundTickets[round] && roundTickets[round][user.id];
-    if (ticket && ticket.ticketId === ticketId) {
-        if (ticket.betType === 'number') {
-            if (ticket.numbers.includes(winning_number)) {
-                won = true;
-                amount = SPIN_COST * SPIN_PAYOUT_MULTIPLIER;
-            }
-        } else if (ticket.betType === 'red' || ticket.betType === 'black') {
-            won = winning_color === ticket.betType;
-            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
-        } else if (ticket.betType === 'odd') {
-            won = winning_number !== 0 && winning_number % 2 === 1;
-            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
-        } else if (ticket.betType === 'even') {
-            won = winning_number !== 0 && winning_number % 2 === 0;
-            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
-        } else if (ticket.betType === 'low') {
-            won = winning_number >= 1 && winning_number <= 18;
-            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
-        } else if (ticket.betType === 'high') {
-            won = winning_number >= 19 && winning_number <= 36;
-            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
-        } else if (ticket.betType === 'dozen1') {
-            won = winning_number >= 1 && winning_number <= 12;
-            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
-        } else if (ticket.betType === 'dozen2') {
-            won = winning_number >= 13 && winning_number <= 24;
-            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
-        } else if (ticket.betType === 'dozen3') {
-            won = winning_number >= 25 && winning_number <= 36;
-            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
-        }
-
-        if (won && amount > 0) {
-            changeBalance(user.id, amount);
-        }
-    }
-
-    res.json({
-        winning_number,
-        winning_color,
-        won,
-        amount,
-        balance: getBalance(user.id),
-    });
-});
-
-// --- Mini app (legacy): instant spin — kept for backward compatibility ---
-// betType: 'number' | 'red' | 'black' | 'odd' | 'even' | ...
-// betValue: only required when betType === 'number' (0-36)
-app.post('/api/spin-win', (req, res) => {
-    const { initData, betType, betValue, number } = req.body;
-    const user = validateInitData(initData);
-    if (!user) return res.status(401).json({ error: 'ልክ ያልሆነ initData' });
-
-    // Back-compat: old clients sent {number} only, meaning a straight-up number bet.
-    const type = betType || (typeof number === 'number' ? 'number' : null);
-    const value = betType === 'number' ? betValue : number;
-
-    const VALID_TYPES = [
-        'number', 'red', 'black', 'odd', 'even',
-        'dozen1', 'dozen2', 'dozen3',
-        'low', 'high',
-        'col1', 'col2', 'col3',
-    ];
-    if (!VALID_TYPES.includes(type)) {
-        return res.status(400).json({ error: 'ልክ ያልሆነ የውርርድ አይነት' });
-    }
-    if (type === 'number' && (typeof value !== 'number' || value < 0 || value > 36)) {
-        return res.status(400).json({ error: 'ልክ ያልሆነ ቁጥር' });
-    }
-
-    const balance = getBalance(user.id);
-    if (balance < SPIN_COST) {
-        return res.status(400).json({ error: 'በቂ ሂሳብ የለዎትም' });
-    }
-
-    // Deduct the spin cost first
-    changeBalance(user.id, -SPIN_COST);
-
-    // Spin the wheel — decided here on the server, never trusted from the client
-    const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
-    const winningColor = colorFor(winningNumber);
-
-    let won = false;
-    let multiplier = 0;
-    if (type === 'number') {
-        won = value === winningNumber;
-        multiplier = SPIN_PAYOUT_MULTIPLIER; // 36x (35:1 + stake back)
-    } else if (type === 'red' || type === 'black') {
-        won = winningColor === type;
-        multiplier = EVEN_MONEY_MULTIPLIER;
-    } else if (type === 'odd') {
-        won = winningNumber !== 0 && winningNumber % 2 === 1;
-        multiplier = EVEN_MONEY_MULTIPLIER;
-    } else if (type === 'even') {
-        won = winningNumber !== 0 && winningNumber % 2 === 0;
-        multiplier = EVEN_MONEY_MULTIPLIER;
-    } else if (type === 'low') {
-        won = winningNumber >= 1 && winningNumber <= 18;
-        multiplier = EVEN_MONEY_MULTIPLIER;
-    } else if (type === 'high') {
-        won = winningNumber >= 19 && winningNumber <= 36;
-        multiplier = EVEN_MONEY_MULTIPLIER;
-    } else if (type === 'dozen1') {
-        won = winningNumber >= 1 && winningNumber <= 12;
-        multiplier = DOZEN_MULTIPLIER;
-    } else if (type === 'dozen2') {
-        won = winningNumber >= 13 && winningNumber <= 24;
-        multiplier = DOZEN_MULTIPLIER;
-    } else if (type === 'dozen3') {
-        won = winningNumber >= 25 && winningNumber <= 36;
-        multiplier = DOZEN_MULTIPLIER;
-    } else if (type === 'col1') {
-        won = COLUMN_1.has(winningNumber);
-        multiplier = COLUMN_MULTIPLIER;
-    } else if (type === 'col2') {
-        won = COLUMN_2.has(winningNumber);
-        multiplier = COLUMN_MULTIPLIER;
-    } else if (type === 'col3') {
-        won = COLUMN_3.has(winningNumber);
-        multiplier = COLUMN_MULTIPLIER;
-    }
-
-    const amount = won ? SPIN_COST * multiplier : 0;
-    if (won) {
-        changeBalance(user.id, amount);
-    }
-
-    res.json({
-        winning_number: winningNumber,
-        winning_color: winningColor,
-        won,
-        amount,
-        balance: getBalance(user.id),
-    });
-});
-
-// --- Bot: deposit request (creates a pending order, does NOT change balance) ---
-app.post('/api/deposit/request', (req, res) => {
-    const { userId, amount } = req.body;
-    if (!userId || typeof amount !== 'number' || amount <= 0) {
-        return res.status(400).json({ error: 'Invalid request' });
-    }
-    const orderId = createOrder('deposit', String(userId), amount);
-    res.json({ orderId });
-});
-
-// --- Bot: admin confirms deposit (the ONLY place a deposit increases balance) ---
-app.post('/api/deposit/confirm', (req, res) => {
-    const { orderId, adminId } = req.body;
-    const order = ordersData.orders[orderId];
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
-
-    order.status = 'confirmed';
-    order.confirmedBy = adminId;
-    saveOrders(ordersData);
-
-    const newBalance = changeBalance(order.userId, order.amount);
-    res.json({ userId: order.userId, balance: newBalance });
-});
-
-// --- Bot: admin rejects deposit (no balance change) ---
-app.post('/api/deposit/reject', (req, res) => {
-    const { orderId, adminId } = req.body;
-    const order = ordersData.orders[orderId];
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
-
-    order.status = 'rejected';
-    order.rejectedBy = adminId;
-    saveOrders(ordersData);
-
-    res.json({ userId: order.userId });
-});
-
-// --- Bot: withdraw request (deducts immediately, registers a pending payout) ---
-// `phone` is the Telebirr number the user wants the payout sent to. bot.py
-// collects it right after the amount and passes it along here so it gets
-// stored on the order and shown to the admin.
-app.post('/api/withdraw/request', (req, res) => {
-    const { userId, amount, phone } = req.body;
-    if (!userId || typeof amount !== 'number' || amount <= 0) {
-        return res.status(400).json({ error: 'Invalid request' });
-    }
-    if (!phone || typeof phone !== 'string' || !phone.trim()) {
-        return res.status(400).json({ error: 'Phone number required' });
-    }
-    const currentBalance = getBalance(String(userId));
-    if (currentBalance < amount) {
-        return res.status(400).json({ error: 'በቂ ቀሪ ሂሳብ የለዎትም' });
-    }
-    changeBalance(String(userId), -amount);
-    const orderId = createOrder('withdraw', String(userId), amount, { phone: phone.trim() });
-    res.json({ orderId, balance: getBalance(String(userId)) });
-});
-
-// --- Bot: admin confirms withdraw (money already sent via Telebirr) ---
-app.post('/api/withdraw/confirm', (req, res) => {
-    const { orderId, adminId } = req.body;
-    const order = ordersData.orders[orderId];
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
-
-    order.status = 'confirmed';
-    order.confirmedBy = adminId;
-    saveOrders(ordersData);
-
-    res.json({ userId: order.userId, balance: getBalance(String(order.userId)) });
-});
-
-// --- Bot: admin rejects withdraw (refund the deducted balance) ---
-app.post('/api/withdraw/reject', (req, res) => {
-    const { orderId, adminId } = req.body;
-    const order = ordersData.orders[orderId];
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
-
-    changeBalance(String(order.userId), order.amount);
-    order.status = 'rejected';
-    order.rejectedBy = adminId;
-    saveOrders(ordersData);
-
-    res.json({ userId: order.userId, balance: getBalance(String(order.userId)) });
-});
-
-app.listen(PORT, () => {
-    console.log(`Spin and Win API server listening on port ${PORT}`);
-});
+        for (const [key, value] of [...params.entries()].sort((a, b) => a[0].localeCompare(b[0])
