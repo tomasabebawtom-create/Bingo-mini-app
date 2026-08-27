@@ -12,7 +12,10 @@
         <!-- Header -->
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-yellow-400">📊 Admin Dashboard</h1>
-            <button onclick="loadData()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-semibold">🔄 Refresh Data</button>
+            <div class="flex gap-2">
+                <button onclick="logout()" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm font-semibold">🔒 Logout</button>
+                <button onclick="loadData()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-semibold">🔄 Refresh Data</button>
+            </div>
         </div>
 
         <!-- Metrics Cards Grid -->
@@ -33,6 +36,33 @@
                 <p class="text-gray-400 text-sm">🏦 System/House Profit</p>
                 <p id="net-profit" class="text-2xl font-bold mt-2 text-yellow-400">0 ብር</p>
             </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow border border-gray-700">
+                <p class="text-gray-400 text-sm">🟢 አሁን Online</p>
+                <p id="online-now" class="text-2xl font-bold mt-2 text-green-400">0</p>
+            </div>
+        </div>
+
+        <!-- Live Activity Feed -->
+        <div class="bg-gray-800 rounded-lg shadow border border-gray-700 p-6 mb-8">
+            <h2 class="text-xl font-bold mb-4 text-yellow-400">🎯 የቅርብ ጊዜ እንቅስቃሴ (Live Activity)</h2>
+            <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="sticky top-0 bg-gray-800">
+                        <tr class="border-b border-gray-700 text-gray-400">
+                            <th class="py-3 px-4">ሰዓት</th>
+                            <th class="py-3 px-4">ተጠቃሚ</th>
+                            <th class="py-3 px-4">ውርርድ</th>
+                            <th class="py-3 px-4">ውጤት</th>
+                            <th class="py-3 px-4">ብር</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-table-body">
+                        <tr>
+                            <td colspan="5" class="py-4 text-center text-gray-500">መረጃ በመጫን ላይ...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Users Activity & Balance Table -->
@@ -42,13 +72,15 @@
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="border-b border-gray-700 text-gray-400">
+                            <th class="py-3 px-4">ሁኔታ</th>
                             <th class="py-3 px-4">User ID</th>
+                            <th class="py-3 px-4">ስም</th>
                             <th class="py-3 px-4">ቀሪ ሂሳብ (Balance)</th>
                         </tr>
                     </thead>
                     <tbody id="users-table-body">
                         <tr>
-                            <td colspan="2" class="py-4 text-center text-gray-500">መረጃ በመጫን ላይ...</td>
+                            <td colspan="4" class="py-4 text-center text-gray-500">መረጃ በመጫን ላይ...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -57,31 +89,107 @@
     </div>
 
     <script>
+        // --- Admin authentication (client-side gate) ---
+        // ማስታወሻ፦ ትክክለኛው ጥበቃ በ server.js (ADMIN_SECRET) ላይ ነው።
+        // ይህ prompt ቁልፉን ወስዶ ከእያንዳንዱ API ጥሪ ጋር ይልካል።
+        const SECRET_STORAGE_KEY = 'bingo_admin_secret';
+
+        function getSecret() {
+            let secret = sessionStorage.getItem(SECRET_STORAGE_KEY);
+            if (!secret) {
+                secret = prompt('🔑 የአድሚን ሚስጥር ቁልፍ (Admin Secret) ያስገቡ:');
+                if (secret) sessionStorage.setItem(SECRET_STORAGE_KEY, secret);
+            }
+            return secret || '';
+        }
+
+        function logout() {
+            sessionStorage.removeItem(SECRET_STORAGE_KEY);
+            location.reload();
+        }
+
+        async function authedFetch(url) {
+            const secret = getSecret();
+            const res = await fetch(url, { headers: { 'x-admin-secret': secret } });
+            if (res.status === 401) {
+                sessionStorage.removeItem(SECRET_STORAGE_KEY);
+                alert('❌ ትክክል ያልሆነ ቁልፍ። እንደገና ይሞክሩ።');
+                throw new Error('unauthorized');
+            }
+            if (res.status === 503) {
+                alert('⚠️ የአድሚን መዳረሻ በሰርቨሩ ላይ አልተዋቀረም (ADMIN_SECRET ይጠፋል)።');
+                throw new Error('not configured');
+            }
+            return res;
+        }
+
+        function timeAgo(iso) {
+            const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+            if (secs < 60) return secs + 'ሰ በፊት';
+            const mins = Math.floor(secs / 60);
+            if (mins < 60) return mins + 'ደ በፊት';
+            const hrs = Math.floor(mins / 60);
+            return hrs + 'ሰዓ በፊት';
+        }
+
         async function loadData() {
             try {
-                const statsRes = await fetch('/api/admin/stats');
+                const statsRes = await authedFetch('/api/admin/stats');
                 const stats = await statsRes.json();
-                
+
                 document.getElementById('total-users').innerText = stats.total_users;
                 document.getElementById('total-deposits').innerText = stats.total_deposits + ' ብር';
                 document.getElementById('total-withdrawals').innerText = stats.total_withdrawals + ' ብር';
                 document.getElementById('net-profit').innerText = stats.net_profit + ' ብር';
+                document.getElementById('online-now').innerText = stats.online_now != null ? stats.online_now : '-';
 
-                const usersRes = await fetch('/api/admin/users-report');
+                const usersRes = await authedFetch('/api/admin/users-report');
                 const usersData = await usersRes.json();
                 const tbody = document.getElementById('users-table-body');
-                
+
                 tbody.innerHTML = '';
                 if (usersData.users && usersData.users.length > 0) {
                     usersData.users.forEach(user => {
+                        const dot = user.online ? '🟢' : '⚪';
                         const row = `<tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                            <td class="py-3 px-4">${dot}</td>
                             <td class="py-3 px-4 font-mono text-blue-300">${user.userId}</td>
+                            <td class="py-3 px-4">${user.name || '-'}</td>
                             <td class="py-3 px-4 font-semibold text-green-300">${user.balance} ብር</td>
                         </tr>`;
                         tbody.innerHTML += row;
                     });
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="2" class="py-4 text-center text-gray-500">ምንም ተጠቃሚ አልተገኘም</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-500">ምንም ተጠቃሚ አልተገኘም</td></tr>`;
+                }
+
+                const activityRes = await authedFetch('/api/admin/activity?limit=50');
+                const activityData = await activityRes.json();
+                const activityBody = document.getElementById('activity-table-body');
+                activityBody.innerHTML = '';
+                if (activityData.activity && activityData.activity.length > 0) {
+                    activityData.activity.forEach(ev => {
+                        let betLabel = ev.betType;
+                        if (ev.betType === 'number' && ev.numbers) betLabel = 'ቁጥር ' + ev.numbers.join(',');
+                        let resultLabel = '⏳ ውርርድ ተደርጓል';
+                        let amountLabel = '-' + ev.stake + ' ብር';
+                        let amountClass = 'text-red-300';
+                        if (ev.type === 'result') {
+                            resultLabel = ev.won ? '✅ አሸነፈ' : '❌ ተሸነፈ';
+                            amountLabel = (ev.won ? '+' : '') + ev.amount + ' ብር';
+                            amountClass = ev.won ? 'text-green-300 font-bold' : 'text-gray-500';
+                        }
+                        const row = `<tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                            <td class="py-3 px-4 text-gray-400 text-sm">${timeAgo(ev.time)}</td>
+                            <td class="py-3 px-4 font-mono text-blue-300">${ev.name || ev.userId}</td>
+                            <td class="py-3 px-4">${betLabel}</td>
+                            <td class="py-3 px-4">${resultLabel}</td>
+                            <td class="py-3 px-4 ${amountClass}">${amountLabel}</td>
+                        </tr>`;
+                        activityBody.innerHTML += row;
+                    });
+                } else {
+                    activityBody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-gray-500">ገና ምንም እንቅስቃሴ የለም</td></tr>`;
                 }
             } catch (err) {
                 console.error('Failed to load admin data:', err);
@@ -89,7 +197,7 @@
         }
 
         loadData();
-        setInterval(loadData, 10000);
+        setInterval(loadData, 5000);
     </script>
 </body>
 </html>
