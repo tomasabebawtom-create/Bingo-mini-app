@@ -249,4 +249,48 @@ app.post('/api/deposit/reject', async function (req, res) {
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
     await markOrder(orderId, 'rejected', adminId);
-    res.json({ userId: ord
+    res.json({ userId: orderId });
+});
+
+app.post('/api/withdraw/request', async function (req, res) {
+    const userId = req.body.userId;
+    const amount = req.body.amount;
+    const phone = req.body.phone;
+    if (!userId || typeof amount !== 'number' || amount <= 0) return res.status(400).json({ error: 'Invalid request' });
+    if (!phone || typeof phone !== 'string' || !phone.trim()) return res.status(400).json({ error: 'Phone number required' });
+    const currentBalance = await getBalance(String(userId));
+    if (currentBalance < amount) return res.status(400).json({ error: 'insufficient balance' });
+    await changeBalance(String(userId), -amount);
+    const orderId = await createOrder('withdraw', String(userId), amount, { phone: phone.trim() });
+    res.json({ orderId: orderId, balance: await getBalance(String(userId)) });
+});
+
+app.post('/api/withdraw/confirm', async function (req, res) {
+    const orderId = req.body.orderId;
+    const adminId = req.body.adminId;
+    const order = await getOrder(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+    await markOrder(orderId, 'confirmed', adminId);
+    res.json({ userId: order.userId, balance: await getBalance(String(order.userId)) });
+});
+
+app.post('/api/withdraw/reject', async function (req, res) {
+    const orderId = req.body.orderId;
+    const adminId = req.body.adminId;
+    const order = await getOrder(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+    await changeBalance(String(order.userId), order.amount);
+    await markOrder(orderId, 'rejected', adminId);
+    res.json({ userId: order.userId, balance: await getBalance(String(order.userId)) });
+});
+
+initDb().then(function () {
+    app.listen(PORT, function () {
+        console.log('Server listening on port ' + PORT);
+    });
+}).catch(function (err) {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+});
