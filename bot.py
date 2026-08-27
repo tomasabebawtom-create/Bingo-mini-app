@@ -23,6 +23,29 @@ REQUEST_TIMEOUT = 8
 SPIN_WIN_URL = 'https://bingo-mini-app-1.onrender.com'
 
 
+def set_bot_commands():
+    """
+    ✅ አዲስ፦ Telegram's native "Menu" ዝርዝር (☰ Menu ሲነካ የሚታየው) 
+    አሁን በ English ብቻ እንዲፃፍ ተደርጓል።
+    """
+    commands = [
+        types.BotCommand("start", "Start"),
+        types.BotCommand("register", "Register"),
+        types.BotCommand("play", "Play Game"),
+        types.BotCommand("deposit", "Deposit"),
+        types.BotCommand("balance", "Check Balance"),
+        types.BotCommand("withdraw", "Withdraw"),
+        types.BotCommand("transfer", "Transfer"),
+        types.BotCommand("invite", "Invite"),
+        types.BotCommand("instruction", "Instruction"),
+        types.BotCommand("support", "Contact Support"),
+    ]
+    try:
+        bot.set_my_commands(commands)
+    except Exception as e:
+        logger.error(f"Failed to set bot commands: {e}")
+
+
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
@@ -517,5 +540,6 @@ def handle_admin_decision(call, approve):
 
 
 if __name__ == '__main__':
+    set_bot_commands()
     logger.info("Bot polling started...")
     bot.polling(none_stop=True)
