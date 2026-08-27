@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1 Bingo - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-yellow-400">📊 Admin Dashboard</h1>
+            <button onclick="loadData()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-semibold">🔄 Refresh Data</button>
+        </div>
+
+        <!-- Metrics Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-lg shadow border border-gray-700">
+                <p class="text-gray-400 text-sm">👤 Total Users</p>
+                <p id="total-users" class="text-2xl font-bold mt-2">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow border border-gray-700">
+                <p class="text-gray-400 text-sm">📥 Total Deposits</p>
+                <p id="total-deposits" class="text-2xl font-bold mt-2 text-green-400">0 ብር</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow border border-gray-700">
+                <p class="text-gray-400 text-sm">📤 Total Withdrawals</p>
+                <p id="total-withdrawals" class="text-2xl font-bold mt-2 text-red-400">0 ብር</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-lg shadow border border-gray-700">
+                <p class="text-gray-400 text-sm">🏦 System/House Profit</p>
+                <p id="net-profit" class="text-2xl font-bold mt-2 text-yellow-400">0 ብር</p>
+            </div>
+        </div>
+
+        <!-- Users Activity & Balance Table -->
+        <div class="bg-gray-800 rounded-lg shadow border border-gray-700 p-6">
+            <h2 class="text-xl font-bold mb-4 text-yellow-400">📋 የተጠቃሚዎች ዝርዝር እና ቀሪ ሂሳብ (Users Activity)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-gray-700 text-gray-400">
+                            <th class="py-3 px-4">User ID</th>
+                            <th class="py-3 px-4">ቀሪ ሂሳብ (Balance)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        <tr>
+                            <td colspan="2" class="py-4 text-center text-gray-500">መረጃ በመጫን ላይ...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            try {
+                const statsRes = await fetch('/api/admin/stats');
+                const stats = await statsRes.json();
+                
+                document.getElementById('total-users').innerText = stats.total_users;
+                document.getElementById('total-deposits').innerText = stats.total_deposits + ' ብር';
+                document.getElementById('total-withdrawals').innerText = stats.total_withdrawals + ' ብር';
+                document.getElementById('net-profit').innerText = stats.net_profit + ' ብር';
+
+                const usersRes = await fetch('/api/admin/users-report');
+                const usersData = await usersRes.json();
+                const tbody = document.getElementById('users-table-body');
+                
+                tbody.innerHTML = '';
+                if (usersData.users && usersData.users.length > 0) {
+                    usersData.users.forEach(user => {
+                        const row = `<tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                            <td class="py-3 px-4 font-mono text-blue-300">${user.userId}</td>
+                            <td class="py-3 px-4 font-semibold text-green-300">${user.balance} ብር</td>
+                        </tr>`;
+                        tbody.innerHTML += row;
+                    });
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="2" class="py-4 text-center text-gray-500">ምንም ተጠቃሚ አልተገኘም</td></tr>`;
+                }
+            } catch (err) {
+                console.error('Failed to load admin data:', err);
+            }
+        }
+
+        loadData();
+        setInterval(loadData, 10000);
+    </script>
+</body>
+</html>
