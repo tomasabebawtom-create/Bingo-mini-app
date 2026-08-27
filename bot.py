@@ -22,6 +22,16 @@ REQUEST_TIMEOUT = 8
 # Spin Win mini app URL — Render ላይ ቀጥታ (live) የተሰቀለው ገጽ
 SPIN_WIN_URL = 'https://bingo-mini-app-1.onrender.com'
 
+# ✅ አዲስ፦ Backend ላይ ካለው ADMIN_SECRET ጋር ተመሳሳይ የሆነ secret።
+# ይህ ከሌለ backend ማንኛውንም admin-only ጥያቄ (deposit/withdraw confirm/reject)
+# 401/503 ይላል፣ ስለዚህ ይህ environment variable በ Render (ወይም bot ያለበት
+# hosting) ላይ መዘጋጀት አለበት — ልክ ከ backend ጋር ተመሳሳይ ዋጋ ይዞ።
+ADMIN_SECRET = os.environ.get('ADMIN_SECRET', '')
+ADMIN_HEADERS = {"x-admin-secret": ADMIN_SECRET}
+
+if not ADMIN_SECRET:
+    logger.warning("ADMIN_SECRET is not set! Admin confirm/reject requests will fail against the backend.")
+
 
 def set_bot_commands():
     """
@@ -202,6 +212,7 @@ def confirm_or_reject_command(message):
         response = requests.post(
             f"{SERVER_URL}/deposit/{endpoint}",
             json={"orderId": order_id, "adminId": str(admin_id)},
+            headers=ADMIN_HEADERS,
             timeout=REQUEST_TIMEOUT
         )
 
@@ -222,12 +233,16 @@ def confirm_or_reject_command(message):
                     int(user_id),
                     "❌ ተቀማጭዎ ውድቅ ተደርጓል። ለበለጠ መረጃ Support ያግኙ።"
                 )
+        elif response.status_code == 401 or response.status_code == 503:
+            logger.error(f"Admin auth failed: {response.status_code} - {response.text}")
+            bot.reply_to(message, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም። ከ backend ጋር አረጋግጥ።")
         elif response.status_code == 404:
             bot.reply_to(message, f"❌ Order #{order_id} አልተገኘም።")
         elif response.status_code == 409:
             bot.reply_to(message, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።")
         else:
-            bot.reply_to(message, "ስህተት ተፈጥሯል።")
+            logger.error(f"Admin command decision failed: {response.status_code} - {response.text}")
+            bot.reply_to(message, f"ስህተት ተፈጥሯል። (Code: {response.status_code})")
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Admin command decision failed: {e}")
@@ -394,6 +409,7 @@ def handle_withdraw_decision(call, approve):
         response = requests.post(
             f"{SERVER_URL}/withdraw/{endpoint}",
             json={"orderId": order_id, "adminId": str(admin_id)},
+            headers=ADMIN_HEADERS,
             timeout=REQUEST_TIMEOUT
         )
 
@@ -419,10 +435,14 @@ def handle_withdraw_decision(call, approve):
                     int(user_id),
                     f"❌ የማውጣት ጥያቄዎ ውድቅ ተደርጓል። ገንዘቡ ወደ ሂሳብዎ ተመልሷል (አዲሱ ቀሪ ሂሳብ: {new_balance} ብር)።"
                 )
+        elif response.status_code == 401 or response.status_code == 503:
+            logger.error(f"Admin auth failed: {response.status_code} - {response.text}")
+            bot.answer_callback_query(call.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም።", show_alert=True)
         elif response.status_code == 409:
             bot.answer_callback_query(call.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።", show_alert=True)
         else:
-            bot.answer_callback_query(call.id, "ስህተት ተፈጥሯል።", show_alert=True)
+            logger.error(f"Withdraw decision failed: {response.status_code} - {response.text}")
+            bot.answer_callback_query(call.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})", show_alert=True)
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Withdraw decision failed: {e}")
@@ -503,6 +523,7 @@ def handle_admin_decision(call, approve):
         response = requests.post(
             f"{SERVER_URL}/deposit/{endpoint}",
             json={"orderId": order_id, "adminId": str(admin_id)},
+            headers=ADMIN_HEADERS,
             timeout=REQUEST_TIMEOUT
         )
 
@@ -528,10 +549,14 @@ def handle_admin_decision(call, approve):
                     int(user_id),
                     "❌ ተቀማጭዎ ውድቅ ተደርጓል። ለበለጠ መረጃ Support ያግኙ።"
                 )
+        elif response.status_code == 401 or response.status_code == 503:
+            logger.error(f"Admin auth failed: {response.status_code} - {response.text}")
+            bot.answer_callback_query(call.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም።", show_alert=True)
         elif response.status_code == 409:
             bot.answer_callback_query(call.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።", show_alert=True)
         else:
-            bot.answer_callback_query(call.id, "ስህተት ተፈጥሯል።", show_alert=True)
+            logger.error(f"Admin decision failed: {response.status_code} - {response.text}")
+            bot.answer_callback_query(call.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})", show_alert=True)
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Admin decision failed: {e}")
