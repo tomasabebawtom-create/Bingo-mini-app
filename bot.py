@@ -458,10 +458,9 @@ def process_deposit_amount(message):
 
         bot.reply_to(
             message,
-            f"⏱ ጥያቄዎ ተመዝግቧል (#{order_id})።\n\n"
-            f"💳 {amount} ብር ወደዚህ Telebirr ቁጥር ይላኩ:\n"
-            f"📱 {TELEBIRR_NUMBER}\n\n"
-            f"ከላኩ በኋላ አድሚን አረጋግጦ ገንዘብዎን ይጨምርልዎታል።"
+            f"1. ከታች ባለው የቴሌብር አካውንት {amount} ብር ያስገቡ\n\n"
+            f"Phone: {TELEBIRR_NUMBER}\n\n"
+            f"ከላኩ በኋላ ገንዘብዎ ይጨምርልዎታል።"
         )
 
         admin_markup = types.InlineKeyboardMarkup()
