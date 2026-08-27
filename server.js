@@ -24,6 +24,71 @@ function colorFor(n) { if (n === 0) return 'green'; return RED_NUMBERS.has(n) ? 
 const EVEN_MONEY_MULTIPLIER = 2;
 const DOZEN_MULTIPLIER = 3;
 
+// ---------------------------------------------------------------------------
+// Risk management: cap how much the house can be liable for in a single
+// round. This does NOT touch how the winning number is chosen (still fully
+// random / fair) — it only refuses to accept a NEW bet if adding it would
+// push the payout owed for any possible outcome (0-36) past a safety cap.
+// ---------------------------------------------------------------------------
+const ALL_NUMBERS = Array.from({ length: 37 }, (_, i) => i); // 0..36
+const MAX_ROUND_LIABILITY = Number(process.env.MAX_ROUND_LIABILITY || 50000); // ብር — ማስተካከል ይቻላል
+
+// ማንኛውም ውጤት (outcome, 0-36) ቢወጣ፣ ይህ ትኬት ምን ያህል እንደሚከፍል ይሰላል.
+// `stake` here means: for 'number' bets, the PER-NUMBER stake; for every
+// other bet type, the total ticket stake.
+function payoutForOutcome(betType, numbers, stake, outcome) {
+    const color = colorFor(outcome);
+    if (betType === 'number') {
+        return numbers.indexOf(outcome) !== -1 ? stake * SPIN_PAYOUT_MULTIPLIER : 0;
+    }
+    if (betType === 'red') return color === 'red' ? stake * EVEN_MONEY_MULTIPLIER : 0;
+    if (betType === 'black') return color === 'black' ? stake * EVEN_MONEY_MULTIPLIER : 0;
+    if (betType === 'odd') return (outcome !== 0 && outcome % 2 === 1) ? stake * EVEN_MONEY_MULTIPLIER : 0;
+    if (betType === 'even') return (outcome !== 0 && outcome % 2 === 0) ? stake * EVEN_MONEY_MULTIPLIER : 0;
+    if (betType === 'low') return (outcome >= 1 && outcome <= 18) ? stake * EVEN_MONEY_MULTIPLIER : 0;
+    if (betType === 'high') return (outcome >= 19 && outcome <= 36) ? stake * EVEN_MONEY_MULTIPLIER : 0;
+    if (betType === 'dozen1') return (outcome >= 1 && outcome <= 12) ? stake * DOZEN_MULTIPLIER : 0;
+    if (betType === 'dozen2') return (outcome >= 13 && outcome <= 24) ? stake * DOZEN_MULTIPLIER : 0;
+    if (betType === 'dozen3') return (outcome >= 25 && outcome <= 36) ? stake * DOZEN_MULTIPLIER : 0;
+    return 0;
+}
+
+// { [round]: [37 numbers] } — running liability per possible outcome
+const roundLiability = {};
+
+function getLiabilityArray(round) {
+    if (!roundLiability[round]) roundLiability[round] = new Array(37).fill(0);
+    return roundLiability[round];
+}
+
+function wouldExceedCap(round, betType, numbers, stake) {
+    const liability = getLiabilityArray(round);
+    for (let i = 0; i < ALL_NUMBERS.length; i++) {
+        const outcome = ALL_NUMBERS[i];
+        const added = payoutForOutcome(betType, numbers, stake, outcome);
+        if (liability[outcome] + added > MAX_ROUND_LIABILITY) return true;
+    }
+    return false;
+}
+
+function addLiability(round, betType, numbers, stake) {
+    const liability = getLiabilityArray(round);
+    for (let i = 0; i < ALL_NUMBERS.length; i++) {
+        const outcome = ALL_NUMBERS[i];
+        liability[outcome] += payoutForOutcome(betType, numbers, stake, outcome);
+    }
+}
+
+// Old rounds' liability arrays are no longer needed once resolved — clean up
+// a few cycles back so this object doesn't grow forever.
+function cleanupOldLiability(currentRound) {
+    const cutoff = currentRound - 5;
+    Object.keys(roundLiability).forEach(function (key) {
+        if (Number(key) < cutoff) delete roundLiability[key];
+    });
+}
+// ---------------------------------------------------------------------------
+
 if (!DATABASE_URL) { console.warn('DATABASE_URL not set'); }
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 const memBalances = {};
@@ -178,6 +243,15 @@ app.post('/api/place-ticket', async function (req, res) {
 
     const balance = await getBalance(user.id);
     if (balance < stake) return res.status(400).json({ error: 'insufficient balance' });
+
+    // Risk cap: refuse the bet if it would push any possible outcome's
+    // payout liability for this round past the safety threshold.
+    const payoutStake = betType === 'number' ? perNumberStake : stake;
+    if (wouldExceedCap(round, betType, numbers || [], payoutStake)) {
+        return res.status(400).json({ error: 'ይህ ውርርድ በአሁኑ ጊዜ ተቀባይነት የለውም (ከፍተኛ ገደብ ደርሷል)' });
+    }
+    addLiability(round, betType, numbers || [], payoutStake);
+
     await changeBalance(user.id, -stake);
     if (!roundTickets[round]) roundTickets[round] = {};
     const ticketId = round + '-' + user.id;
@@ -194,6 +268,7 @@ app.get('/api/round-result', async function (req, res) {
     if (!resolvedRounds[round]) {
         const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
         resolvedRounds[round] = { winning_number: winningNumber, winning_color: colorFor(winningNumber) };
+        cleanupOldLiability(round);
     }
     const winning_number = resolvedRounds[round].winning_number;
     const winning_color = resolvedRounds[round].winning_color;
