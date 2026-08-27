@@ -1,6 +1,3 @@
-// ==================================================================
-// Spin and Win — Backend Server (PostgreSQL version)
-// ==================================================================
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -25,10 +22,6 @@ const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 
 function colorFor(n) { if (n === 0) return 'green'; return RED_NUMBERS.has(n) ? 'red' : 'black'; }
 const EVEN_MONEY_MULTIPLIER = 2;
 const DOZEN_MULTIPLIER = 3;
-const COLUMN_MULTIPLIER = 3;
-const COLUMN_1 = new Set([1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34]);
-const COLUMN_2 = new Set([2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]);
-const COLUMN_3 = new Set([3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]);
 
 if (!DATABASE_URL) { console.warn('DATABASE_URL not set'); }
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
@@ -59,10 +52,11 @@ async function changeBalance(userId, delta) {
     return Number(result.rows[0].balance);
 }
 
-async function createOrder(type, userId, amount, extra = {}) {
+async function createOrder(type, userId, amount, extra) {
+    extra = extra || {};
     if (!pool) {
         const orderId = String(memOrders.nextId++);
-        memOrders.orders[orderId] = { type, userId, amount, status: 'pending', createdAt: new Date().toISOString(), ...extra };
+        memOrders.orders[orderId] = { type: type, userId: userId, amount: amount, status: 'pending', createdAt: new Date().toISOString(), phone: extra.phone };
         return orderId;
     }
     const result = await pool.query('INSERT INTO orders (type, user_id, amount, phone) VALUES ($1, $2, $3, $4) RETURNING order_id', [type, userId, amount, extra.phone || null]);
@@ -82,24 +76,34 @@ async function markOrder(orderId, status, adminId) {
         const order = memOrders.orders[orderId];
         if (!order) return;
         order.status = status;
-        if (status === 'confirmed') order.confirmedBy = adminId;
-        if (status === 'rejected') order.rejectedBy = adminId;
         return;
     }
     const col = status === 'confirmed' ? 'confirmed_by' : 'rejected_by';
-    await pool.query('UPDATE orders SET status = $2, ' + col + ' = $3 WHERE order_id = $1', [orderId, status, adminId]);
+    const sql = 'UPDATE orders SET status = $2, ' + col + ' = $3 WHERE order_id = $1';
+    await pool.query(sql, [orderId, status, adminId]);
+}
+
+function sortEntries(entries) {
+    entries.sort(function (a, b) {
+        if (a[0] < b[0]) return -1;
+        if (a[0] > b[0]) return 1;
+        return 0;
+    });
+    return entries;
 }
 
 function validateInitData(initData) {
-    if (!BOT_TOKEN) { console.warn('BOT_TOKEN not set'); return parseUnsafe(initData); }
+    if (!BOT_TOKEN) { return parseUnsafe(initData); }
     try {
         const params = new URLSearchParams(initData);
         const hash = params.get('hash');
         params.delete('hash');
-        const entries = [...params.entries()];
-        entries.sort(function(a, b) { return a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0); });
-        const dataCheckArr = entries.map(function(pair) { return pair[0] + '=' + pair[1]; });
-        const dataCheckString = dataCheckArr.join('\n');
+        const entries = sortEntries(Array.from(params.entries()));
+        const parts = [];
+        for (let i = 0; i < entries.length; i++) {
+            parts.push(entries[i][0] + '=' + entries[i][1]);
+        }
+        const dataCheckString = parts.join(String.fromCharCode(10));
         const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
         const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
         if (computedHash !== hash) return null;
@@ -107,7 +111,9 @@ function validateInitData(initData) {
         if (!userJson) return null;
         const user = JSON.parse(userJson);
         return { id: String(user.id), first_name: user.first_name };
-    } catch (e) { return null; }
+    } catch (e) {
+        return null;
+    }
 }
 
 function parseUnsafe(initData) {
@@ -117,9 +123,130 @@ function parseUnsafe(initData) {
         if (!userJson) return null;
         const user = JSON.parse(userJson);
         return { id: String(user.id), first_name: user.first_name };
-    } catch (e) { return null; }
+    } catch (e) {
+        return null;
+    }
 }
 
 const roundTickets = {};
 const resolvedRounds = {};
 function currentRoundId() { return Math.floor(Date.now() / 1000 / ROUND_LENGTH); }
+
+app.get('/', function (req, res) {
+    res.send('Spin and Win API server is running');
+});
+
+app.get('/api/balance', async function (req, res) {
+    const initData = req.query.initData || '';
+    const user = validateInitData(initData);
+    if (!user) return res.status(401).json({ error: 'invalid initData' });
+    res.json({ balance: await getBalance(user.id) });
+});
+
+app.get('/api/balance/:userId', async function (req, res) {
+    res.json({ balance: await getBalance(String(req.params.userId)) });
+});
+
+app.post('/api/place-ticket', async function (req, res) {
+    const initData = req.body.initData;
+    const round = req.body.round;
+    const betType = req.body.betType;
+    const numbers = req.body.numbers;
+    const user = validateInitData(initData);
+    if (!user) return res.status(401).json({ error: 'invalid initData' });
+    if (round !== currentRoundId()) return res.status(400).json({ error: 'round closed' });
+    const VALID_TYPES = ['number', 'red', 'black', 'odd', 'even', 'dozen1', 'dozen2', 'dozen3', 'low', 'high'];
+    if (VALID_TYPES.indexOf(betType) === -1) return res.status(400).json({ error: 'invalid bet type' });
+    let stake = SPIN_COST;
+    if (betType === 'number') {
+        if (!Array.isArray(numbers) || numbers.length === 0) return res.status(400).json({ error: 'select a number' });
+        for (let i = 0; i < numbers.length; i++) {
+            const n = numbers[i];
+            if (typeof n !== 'number' || n < 0 || n > 36) return res.status(400).json({ error: 'invalid number' });
+        }
+        stake = numbers.length * SPIN_COST;
+    }
+    const balance = await getBalance(user.id);
+    if (balance < stake) return res.status(400).json({ error: 'insufficient balance' });
+    await changeBalance(user.id, -stake);
+    if (!roundTickets[round]) roundTickets[round] = {};
+    const ticketId = round + '-' + user.id;
+    roundTickets[round][user.id] = { betType: betType, numbers: numbers || [], stake: stake, ticketId: ticketId };
+    res.json({ ticket_id: ticketId, balance: await getBalance(user.id) });
+});
+
+app.get('/api/round-result', async function (req, res) {
+    const initData = req.query.initData || '';
+    const round = parseInt(req.query.round, 10);
+    const ticketId = req.query.ticket_id;
+    const user = validateInitData(initData);
+    if (!user) return res.status(401).json({ error: 'invalid initData' });
+    if (!resolvedRounds[round]) {
+        const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
+        resolvedRounds[round] = { winning_number: winningNumber, winning_color: colorFor(winningNumber) };
+    }
+    const winning_number = resolvedRounds[round].winning_number;
+    const winning_color = resolvedRounds[round].winning_color;
+    let won = false;
+    let amount = 0;
+    const ticket = roundTickets[round] && roundTickets[round][user.id];
+    if (ticket && ticket.ticketId === ticketId) {
+        if (ticket.betType === 'number') {
+            if (ticket.numbers.indexOf(winning_number) !== -1) { won = true; amount = SPIN_COST * SPIN_PAYOUT_MULTIPLIER; }
+        } else if (ticket.betType === 'red' || ticket.betType === 'black') {
+            won = winning_color === ticket.betType;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'odd') {
+            won = winning_number !== 0 && winning_number % 2 === 1;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'even') {
+            won = winning_number !== 0 && winning_number % 2 === 0;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'low') {
+            won = winning_number >= 1 && winning_number <= 18;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'high') {
+            won = winning_number >= 19 && winning_number <= 36;
+            amount = won ? ticket.stake * EVEN_MONEY_MULTIPLIER : 0;
+        } else if (ticket.betType === 'dozen1') {
+            won = winning_number >= 1 && winning_number <= 12;
+            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
+        } else if (ticket.betType === 'dozen2') {
+            won = winning_number >= 13 && winning_number <= 24;
+            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
+        } else if (ticket.betType === 'dozen3') {
+            won = winning_number >= 25 && winning_number <= 36;
+            amount = won ? ticket.stake * DOZEN_MULTIPLIER : 0;
+        }
+        if (won && amount > 0) { await changeBalance(user.id, amount); }
+    }
+    res.json({ winning_number: winning_number, winning_color: winning_color, won: won, amount: amount, balance: await getBalance(user.id) });
+});
+
+app.post('/api/deposit/request', async function (req, res) {
+    const userId = req.body.userId;
+    const amount = req.body.amount;
+    if (!userId || typeof amount !== 'number' || amount <= 0) return res.status(400).json({ error: 'Invalid request' });
+    const orderId = await createOrder('deposit', String(userId), amount);
+    res.json({ orderId: orderId });
+});
+
+app.post('/api/deposit/confirm', async function (req, res) {
+    const orderId = req.body.orderId;
+    const adminId = req.body.adminId;
+    const order = await getOrder(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+    await markOrder(orderId, 'confirmed', adminId);
+    const newBalance = await changeBalance(order.userId, order.amount);
+    res.json({ userId: order.userId, balance: newBalance });
+});
+
+app.post('/api/deposit/reject', async function (req, res) {
+    const orderId = req.body.orderId;
+    const adminId = req.body.adminId;
+    const order = await getOrder(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(409).json({ error: 'Already handled' });
+    await markOrder(orderId, 'rejected', adminId);
+    res.json({ userId: ord
