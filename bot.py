@@ -124,7 +124,7 @@ def check_balance_command(message):
 def deposit_command(message):
     msg = bot.send_message(
         message.chat.id,
-        "💳 የመቀማት (deposit) መጠን ብቻ ላክ (ለምሳሌ: 100)"
+        "💰 ማስገባት የሚፈልጉትን መጠን ከ10 ብር ጀምሮ ያስገቡ።"
     )
     bot.register_next_step_handler(msg, process_deposit_amount)
 
@@ -240,7 +240,7 @@ def callback_query(call):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id,
-            "💳 የመቀማት (deposit) መጠን ብቻ ላክ (ለምሳሌ: 100)"
+            "💰 ማስገባት የሚፈልጉትን መጠን ከ10 ብር ጀምሮ ያስገቡ።"
         )
         bot.register_next_step_handler(msg, process_deposit_amount)
 
@@ -437,8 +437,8 @@ def process_deposit_amount(message):
 
     try:
         amount = float(message.text)
-        if amount <= 0:
-            bot.reply_to(message, "❌ መጠኑ ከዜሮ በላይ መሆን አለበት።")
+        if amount < 10:
+            bot.reply_to(message, "❌ ዝቅተኛው የማስገቢያ መጠን 10 ብር ነው። እባክዎ ከ10 ብር በላይ ያስገቡ።")
             return
 
         user_id = str(message.from_user.id)
