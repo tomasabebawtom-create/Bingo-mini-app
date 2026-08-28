@@ -377,8 +377,7 @@ def process_withdraw_phone(message, amount):
         message.chat.id,
             f"⏱ የማውጣት ጥያቄዎ ተመዝግቧል (#{order_id})።\n"
             f"💰 አዲሱ ቀሪ ሂሳብዎ: {new_balance} ብር\n"
-            f"📱 ገንዘቡ ወደ: {phone} ይላካል\n\n"
-            f"አድሚን አረጋግጦ ገንዘቡን ወደ Telebirr ቁጥርዎ ይልካል።"
+            f"📱 ገንዘቡ ወደ: {phone} ይላካል"
         )
 
         admin_markup = types.InlineKeyboardMarkup()
