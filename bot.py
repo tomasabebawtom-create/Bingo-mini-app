@@ -143,7 +143,7 @@ def deposit_command(message):
 def withdraw_command(message):
     msg = bot.send_message(
         message.chat.id,
-        "ማውጣት የምትፈልገውን ብር መጠን ፃፍ"
+        "💵\nማውጣት የምትፈልገውን ብር መጠን ፃፍ"
     )
     bot.register_next_step_handler(msg, process_withdraw_amount)
 
@@ -182,8 +182,8 @@ def convert_bonus_command(message):
 def send_my_id(message):
     uid = message.from_user.id
     uname = message.from_user.username or "(username የለውም)"
-    bot.reply_to(
-        message,
+    bot.send_message(
+        message.chat.id,
         f"🆔 የ Telegram ID ያንተ: `{uid}`\n"
         f"👤 Username: @{uname}\n\n"
         f"ይህን ID bot.py ውስጥ ADMIN_IDS ላይ እና deposit-routes.js ውስጥ ADMIN_IDS ላይ ተካ።",
@@ -196,12 +196,14 @@ def confirm_or_reject_command(message):
     admin_id = message.from_user.id
 
     if not is_admin(admin_id):
-        bot.reply_to(message, "⛔ ይህን የማድረግ ፍቃድ የለዎትም።")
+        bot.send_message(
+        message.chat.id, "⛔ ይህን የማድረግ ፍቃድ የለዎትም።")
         return
 
     parts = message.text.split()
     if len(parts) != 2:
-        bot.reply_to(message, "❌ አጠቃቀም: /confirm <order_id>  ወይም  /reject <order_id>")
+        bot.send_message(
+        message.chat.id, "❌ አጠቃቀም: /confirm <order_id>  ወይም  /reject <order_id>")
         return
 
     order_id = parts[1]
@@ -219,7 +221,8 @@ def confirm_or_reject_command(message):
         if response.status_code == 200:
             data = response.json()
             status_text = "✅ ጸድቋል" if approve else "❌ ውድቅ ተደርጓል"
-            bot.reply_to(message, f"{status_text} — Order #{order_id}")
+            bot.send_message(
+        message.chat.id, f"{status_text} — Order #{order_id}")
 
             user_id = data.get('userId')
             if approve:
@@ -235,18 +238,23 @@ def confirm_or_reject_command(message):
                 )
         elif response.status_code == 401 or response.status_code == 503:
             logger.error(f"Admin auth failed: {response.status_code} - {response.text}")
-            bot.reply_to(message, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም። ከ backend ጋር አረጋግጥ።")
+            bot.send_message(
+        message.chat.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም። ከ backend ጋር አረጋግጥ።")
         elif response.status_code == 404:
-            bot.reply_to(message, f"❌ Order #{order_id} አልተገኘም።")
+            bot.send_message(
+        message.chat.id, f"❌ Order #{order_id} አልተገኘም።")
         elif response.status_code == 409:
-            bot.reply_to(message, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።")
+            bot.send_message(
+        message.chat.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።")
         else:
             logger.error(f"Admin command decision failed: {response.status_code} - {response.text}")
-            bot.reply_to(message, f"ስህተት ተፈጥሯል። (Code: {response.status_code})")
+            bot.send_message(
+        message.chat.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})")
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Admin command decision failed: {e}")
-        bot.reply_to(message, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
+        bot.send_message(
+        message.chat.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -276,7 +284,7 @@ def callback_query(call):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id,
-            "ማውጣት የምትፈልገውን ብር መጠን ፃፍ"
+            "💵\nማውጣት የምትፈልገውን ብር መጠን ፃፍ"
         )
         bot.register_next_step_handler(msg, process_withdraw_amount)
 
@@ -314,15 +322,17 @@ def process_withdraw_amount(message):
     try:
         amount = float(message.text)
         if amount <= 0:
-            bot.reply_to(message, "❌ መጠኑ ከዜሮ በላይ መሆን አለበት።")
+            bot.send_message(
+        message.chat.id, "❌ መጠኑ ከዜሮ በላይ መሆን አለበት።")
             return
     except ValueError:
-        bot.reply_to(message, "❌ እባክዎ ትክክለኛ የቁጥር መጠን ብቻ ይላኩ (ለምሳሌ: 100)")
+        bot.send_message(
+        message.chat.id, "❌ እባክዎ ትክክለኛ የቁጥር መጠን ብቻ ይላኩ (ለምሳሌ: 100)")
         return
 
-    msg = bot.reply_to(
-        message,
-        "📱 ገንዘቡ የሚላክበትን የእርስዎን የቴሌብር ስልክ ቁጥር ያስገቡ 09-"
+    msg = bot.send_message(
+        message.chat.id,
+        "📱 ገንዘቡ የሚላክበትን የቴሌብር ስልክ ቁጥር ላክ 09"
     )
     bot.register_next_step_handler(msg, process_withdraw_phone, amount)
 
@@ -336,8 +346,8 @@ def process_withdraw_phone(message, amount):
     phone = message.text.strip()
 
     if not phone.isdigit() or len(phone) < 9:
-        msg = bot.reply_to(
-            message,
+        msg = bot.send_message(
+        message.chat.id,
             "❌ ትክክለኛ የስልክ ቁጥር አልላኩም። እባክዎ ቁጥሮች ብቻ ይላኩ (ለምሳሌ: 0912345678)"
         )
         bot.register_next_step_handler(msg, process_withdraw_phone, amount)
@@ -355,15 +365,16 @@ def process_withdraw_phone(message, amount):
 
         if response.status_code != 200:
             err = response.json().get('error', 'ጥያቄ መፍጠር አልተቻለም።')
-            bot.reply_to(message, f"❌ {err}")
+            bot.send_message(
+        message.chat.id, f"❌ {err}")
             return
 
         data = response.json()
         order_id = data.get('orderId')
         new_balance = data.get('balance')
 
-        bot.reply_to(
-            message,
+        bot.send_message(
+        message.chat.id,
             f"⏱ የማውጣት ጥያቄዎ ተመዝግቧል (#{order_id})።\n"
             f"💰 አዲሱ ቀሪ ሂሳብዎ: {new_balance} ብር\n"
             f"📱 ገንዘቡ ወደ: {phone} ይላካል\n\n"
@@ -392,7 +403,8 @@ def process_withdraw_phone(message, amount):
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Server connection failed: {e}")
-        bot.reply_to(message, "❌ ከሰርቨሩ ጋር መገናኘት አልተቻለም። እባክዎ ቆይተው ይሞክሩ።")
+        bot.send_message(
+        message.chat.id, "❌ ከሰርቨሩ ጋር መገናኘት አልተቻለም። እባክዎ ቆይተው ይሞክሩ።")
 
 
 def handle_withdraw_decision(call, approve):
@@ -461,7 +473,8 @@ def process_deposit_amount(message):
     try:
         amount = float(message.text)
         if amount < 10:
-            bot.reply_to(message, "❌ ዝቅተኛው የማስገቢያ መጠን 10 ብር ነው። እባክዎ ከ10 ብር በላይ ያስገቡ።")
+            bot.send_message(
+        message.chat.id, "❌ ዝቅተኛው የማስገቢያ መጠን 10 ብር ነው። እባክዎ ከ10 ብር በላይ ያስገቡ።")
             return
 
         user_id = str(message.from_user.id)
@@ -474,7 +487,8 @@ def process_deposit_amount(message):
         )
 
         if response.status_code != 200:
-            bot.reply_to(message, "❌ ጥያቄ መፍጠር አልተቻለም። እባክዎ እንደገና ይሞክሩ።")
+            bot.send_message(
+        message.chat.id, "❌ ጥያቄ መፍጠር አልተቻለም። እባክዎ እንደገና ይሞክሩ።")
             return
 
         order_id = response.json().get('orderId')
@@ -506,10 +520,12 @@ def process_deposit_amount(message):
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
 
     except ValueError:
-        bot.reply_to(message, "❌ እባክዎ ትክክለኛ የቁጥር መጠን ብቻ ይላኩ (ለምሳሌ: 100)")
+        bot.send_message(
+        message.chat.id, "❌ እባክዎ ትክክለኛ የቁጥር መጠን ብቻ ይላኩ (ለምሳሌ: 100)")
     except requests.exceptions.RequestException as e:
         logger.error(f"Server connection failed: {e}")
-        bot.reply_to(message, "❌ ከሰርቨሩ ጋር መገናኘት አልተቻለም። እባክዎ ቆይተው ይሞክሩ።")
+        bot.send_message(
+        message.chat.id, "❌ ከሰርቨሩ ጋር መገናኘት አልተቻለም። እባክዎ ቆይተው ይሞክሩ።")
 
 
 def handle_admin_decision(call, approve):
