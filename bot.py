@@ -45,7 +45,6 @@ def set_bot_commands():
         types.BotCommand("deposit", "Deposit"),
         types.BotCommand("balance", "Check Balance"),
         types.BotCommand("withdraw", "Withdraw"),
-        types.BotCommand("transfer", "Transfer"),
         types.BotCommand("invite", "Invite"),
         types.BotCommand("instruction", "Instruction"),
         types.BotCommand("support", "Contact Support"),
@@ -90,7 +89,6 @@ def build_main_menu():
         types.InlineKeyboardButton("📖 Instruction", callback_data="instruction"),
     )
     markup.add(
-        types.InlineKeyboardButton("🎁 Transfer", callback_data="transfer"),
         types.InlineKeyboardButton("🤑 Withdraw", callback_data="withdraw"),
     )
     markup.add(
@@ -155,7 +153,7 @@ def register_command(message):
 
 @bot.message_handler(commands=['support'])
 def support_command(message):
-    bot.send_message(message.chat.id, "☎️ Contact Support: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+    bot.send_message(message.chat.id, "☎️ Contact Support: 👩‍💻@seeyou1m")
 
 
 @bot.message_handler(commands=['instruction'])
@@ -163,14 +161,9 @@ def instruction_command(message):
     bot.send_message(message.chat.id, "📖 Instruction: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
 
 
-@bot.message_handler(commands=['transfer'])
-def transfer_command(message):
-    bot.send_message(message.chat.id, "🎁 Transfer: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
-
-
 @bot.message_handler(commands=['invite'])
 def invite_command(message):
-    bot.send_message(message.chat.id, "🔗 Invite: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+    bot.send_message(message.chat.id, "🔗 Invite: https://t.me/+pX81moWwpUExNGJk")
 
 
 @bot.message_handler(commands=['convertbonus'])
@@ -288,14 +281,19 @@ def callback_query(call):
         )
         bot.register_next_step_handler(msg, process_withdraw_amount)
 
-    elif call.data in ("register", "support", "instruction", "transfer", "invite", "convert_bonus"):
+    elif call.data == "support":
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "☎️ Contact Support: 👩‍💻@seeyou1m")
+
+    elif call.data == "invite":
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "🔗 Invite: https://t.me/+pX81moWwpUExNGJk")
+
+    elif call.data in ("register", "instruction", "convert_bonus"):
         bot.answer_callback_query(call.id)
         labels = {
             "register": "📝 Register",
-            "support": "☎️ Contact Support",
             "instruction": "📖 Instruction",
-            "transfer": "🎁 Transfer",
-            "invite": "🔗 Invite",
             "convert_bonus": "🎫 Convert Bonus",
         }
         bot.send_message(
