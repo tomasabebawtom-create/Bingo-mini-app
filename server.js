@@ -119,6 +119,37 @@ async function changeBalance(userId, delta) {
     return Number(result.rows[0].balance);
 }
 
+// ---------------------------------------------------------------------------
+// Atomic "deduct if enough balance" — prevents the race condition where two
+// simultaneous withdraw requests (e.g. a duplicate bot instance, or a
+// double-tap) both read the same balance, both pass the "enough?" check,
+// and both deduct — leaving the balance negative.
+// Returns { ok: true, balance } if the deduction happened,
+// or { ok: false, balance } if there wasn't enough (balance unchanged).
+// ---------------------------------------------------------------------------
+async function deductIfSufficient(userId, amount) {
+    if (!pool) {
+        // In-memory store: Node is single-threaded and this function has no
+        // `await` between the read and the write, so this check-then-write
+        // is already atomic with respect to other requests.
+        const current = await getBalance(userId);
+        if (current < amount) return { ok: false, balance: current };
+        memBalances[userId] = current - amount;
+        return { ok: true, balance: memBalances[userId] };
+    }
+    await getBalance(userId); // ensure row exists
+    const result = await pool.query(
+        'UPDATE balances SET balance = balance - $2 WHERE user_id = $1 AND balance >= $2 RETURNING balance',
+        [userId, amount]
+    );
+    if (result.rows.length === 0) {
+        const current = await getBalance(userId);
+        return { ok: false, balance: current };
+    }
+    return { ok: true, balance: Number(result.rows[0].balance) };
+}
+// ---------------------------------------------------------------------------
+
 async function createOrder(type, userId, amount, extra) {
     extra = extra || {};
     if (!pool) {
@@ -367,24 +398,26 @@ app.post('/api/place-ticket', async function (req, res) {
         stake = numbers.length * requestedStake; // total cost = one requestedStake per marked number
     }
 
-    const balance = await getBalance(user.id);
-    if (balance < stake) return res.status(400).json({ error: 'insufficient balance' });
-
     // Risk cap: refuse the bet if it would push any possible outcome's
     // payout liability for this round past the safety threshold.
     const payoutStake = betType === 'number' ? perNumberStake : stake;
     if (wouldExceedCap(round, betType, numbers || [], payoutStake)) {
         return res.status(400).json({ error: 'ይህ ውርርድ በአሁኑ ጊዜ ተቀባይነት የለውም (ከፍተኛ ገደብ ደርሷል)' });
     }
+
+    // Atomic deduct — avoids the same race condition as withdraw (two bets
+    // arriving at once could otherwise both pass a separate balance check).
+    const deduction = await deductIfSufficient(user.id, stake);
+    if (!deduction.ok) return res.status(400).json({ error: 'insufficient balance' });
+
     addLiability(round, betType, numbers || [], payoutStake);
 
-    await changeBalance(user.id, -stake);
     if (!roundTickets[round]) roundTickets[round] = {};
     const ticketId = round + '-' + user.id;
     roundTickets[round][user.id] = { betType: betType, numbers: numbers || [], stake: stake, perNumberStake: perNumberStake, ticketId: ticketId };
     touch(user.id, user.first_name);
     logActivity({ type: 'bet', userId: user.id, name: user.first_name || null, betType: betType, numbers: numbers || [], stake: stake, round: round });
-    res.json({ ticket_id: ticketId, balance: await getBalance(user.id) });
+    res.json({ ticket_id: ticketId, balance: deduction.balance });
 });
 
 app.get('/api/round-result', async function (req, res) {
@@ -474,11 +507,16 @@ app.post('/api/withdraw/request', async function (req, res) {
     const phone = req.body.phone;
     if (!userId || typeof amount !== 'number' || amount <= 0) return res.status(400).json({ error: 'Invalid request' });
     if (!phone || typeof phone !== 'string' || !phone.trim()) return res.status(400).json({ error: 'Phone number required' });
-    const currentBalance = await getBalance(String(userId));
-    if (currentBalance < amount) return res.status(400).json({ error: 'insufficient balance' });
-    await changeBalance(String(userId), -amount);
+
+    // Atomic check-and-deduct: prevents two concurrent withdraw requests
+    // (e.g. from a duplicate bot instance, or a double-tap) from both
+    // reading the same balance, both passing the check, and both
+    // deducting — which would leave the balance negative.
+    const deduction = await deductIfSufficient(String(userId), amount);
+    if (!deduction.ok) return res.status(400).json({ error: 'insufficient balance' });
+
     const orderId = await createOrder('withdraw', String(userId), amount, { phone: phone.trim() });
-    res.json({ orderId: orderId, balance: await getBalance(String(userId)) });
+    res.json({ orderId: orderId, balance: deduction.balance });
 });
 
 app.post('/api/withdraw/confirm', requireAdmin, async function (req, res) {
