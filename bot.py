@@ -143,7 +143,7 @@ def deposit_command(message):
 def withdraw_command(message):
     msg = bot.send_message(
         message.chat.id,
-        "🤑 የማውጣት (withdraw) መጠን ብቻ ላክ (ለምሳሌ: 100)"
+        "ማውጣት የምትፈልገውን ብር መጠን ፃፍ"
     )
     bot.register_next_step_handler(msg, process_withdraw_amount)
 
@@ -276,7 +276,7 @@ def callback_query(call):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id,
-            "🤑 የማውጣት (withdraw) መጠን ብቻ ላክ (ለምሳሌ: 100)"
+            "ማውጣት የምትፈልገውን ብር መጠን ፃፍ"
         )
         bot.register_next_step_handler(msg, process_withdraw_amount)
 
@@ -322,7 +322,7 @@ def process_withdraw_amount(message):
 
     msg = bot.reply_to(
         message,
-        "📱 ገንዘቡ የሚላክበትን የቴሌብር ስልክ ቁጥር ላክ (ለምሳሌ: 0912345678)"
+        "📱 ገንዘቡ የሚላክበትን የእርስዎን የቴሌብር ስልክ ቁጥር ያስገቡ 09-"
     )
     bot.register_next_step_handler(msg, process_withdraw_phone, amount)
 
