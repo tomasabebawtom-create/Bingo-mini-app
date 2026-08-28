@@ -46,7 +46,6 @@ def set_bot_commands():
         types.BotCommand("balance", "Check Balance"),
         types.BotCommand("withdraw", "Withdraw"),
         types.BotCommand("invite", "Invite"),
-        types.BotCommand("instruction", "Instruction"),
         types.BotCommand("support", "Contact Support"),
     ]
     try:
@@ -86,14 +85,12 @@ def build_main_menu():
     )
     markup.add(
         types.InlineKeyboardButton("☎️ Contact Support", callback_data="support"),
-        types.InlineKeyboardButton("📖 Instruction", callback_data="instruction"),
     )
     markup.add(
         types.InlineKeyboardButton("🤑 Withdraw", callback_data="withdraw"),
     )
     markup.add(
         types.InlineKeyboardButton("🔗 Invite", callback_data="invite"),
-        types.InlineKeyboardButton("🎫 Convert Bonus", callback_data="convert_bonus"),
     )
     return markup
 
@@ -148,7 +145,7 @@ def withdraw_command(message):
 
 @bot.message_handler(commands=['register'])
 def register_command(message):
-    bot.send_message(message.chat.id, "📝 Register: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
+    bot.send_message(message.chat.id, "📝 Register: 📱 ተመዝግበዋል")
 
 
 @bot.message_handler(commands=['support'])
@@ -156,19 +153,9 @@ def support_command(message):
     bot.send_message(message.chat.id, "☎️ Contact Support: 👩‍💻@seeyou1m")
 
 
-@bot.message_handler(commands=['instruction'])
-def instruction_command(message):
-    bot.send_message(message.chat.id, "📖 Instruction: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
-
-
 @bot.message_handler(commands=['invite'])
 def invite_command(message):
     bot.send_message(message.chat.id, "🔗 Invite: https://t.me/+pX81moWwpUExNGJk")
-
-
-@bot.message_handler(commands=['convertbonus'])
-def convert_bonus_command(message):
-    bot.send_message(message.chat.id, "🎫 Convert Bonus: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።")
 
 
 @bot.message_handler(commands=['myid'])
@@ -289,16 +276,11 @@ def callback_query(call):
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, "🔗 Invite: https://t.me/+pX81moWwpUExNGJk")
 
-    elif call.data in ("register", "instruction", "convert_bonus"):
+    elif call.data == "register":
         bot.answer_callback_query(call.id)
-        labels = {
-            "register": "📝 Register",
-            "instruction": "📖 Instruction",
-            "convert_bonus": "🎫 Convert Bonus",
-        }
         bot.send_message(
             call.message.chat.id,
-            f"{labels[call.data]}: ይህ ገፅ በቅርቡ ይጠናቀቃል። ለጥያቄ Contact Support ይጠቀሙ።"
+            "📝 Register: 📱 ተመዝግበዋል"
         )
 
     elif call.data.startswith("approve_"):
