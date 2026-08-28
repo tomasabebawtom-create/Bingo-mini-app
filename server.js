@@ -379,6 +379,14 @@ app.post('/api/place-ticket', async function (req, res) {
     const user = validateInitData(initData);
     if (!user) return res.status(401).json({ error: 'invalid initData' });
     if (round !== currentRoundId()) return res.status(400).json({ error: 'round closed' });
+
+    // *** DOUBLE-SUBMIT GUARD (አዲስ የተጨመረ) ***
+    // ተጠቃሚው በዚህ ዙር (round) ቀድሞውኑ ትኬት ከቆረጠ፣ ሁለተኛ ትኬት (እና ሁለተኛ deduction)
+    // እንዳይፈጸም እዚህ ላይ እናቆመዋለን።
+    if (roundTickets[round] && roundTickets[round][user.id]) {
+        return res.status(409).json({ error: 'በዚህ ዙር ቀድሞውኑ ትኬት ቆርጠዋል' });
+    }
+
     const VALID_TYPES = ['number', 'red', 'black', 'odd', 'even', 'dozen1', 'dozen2', 'dozen3', 'low', 'high'];
     if (VALID_TYPES.indexOf(betType) === -1) return res.status(400).json({ error: 'invalid bet type' });
     if (STAKE_OPTIONS.indexOf(requestedStake) === -1) return res.status(400).json({ error: 'invalid stake' });
