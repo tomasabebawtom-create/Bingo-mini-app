@@ -380,13 +380,6 @@ app.post('/api/place-ticket', async function (req, res) {
     if (!user) return res.status(401).json({ error: 'invalid initData' });
     if (round !== currentRoundId()) return res.status(400).json({ error: 'round closed' });
 
-    // *** DOUBLE-SUBMIT GUARD (አዲስ የተጨመረ) ***
-    // ተጠቃሚው በዚህ ዙር (round) ቀድሞውኑ ትኬት ከቆረጠ፣ ሁለተኛ ትኬት (እና ሁለተኛ deduction)
-    // እንዳይፈጸም እዚህ ላይ እናቆመዋለን።
-    if (roundTickets[round] && roundTickets[round][user.id]) {
-        return res.status(409).json({ error: 'በዚህ ዙር ቀድሞውኑ ትኬት ቆርጠዋል' });
-    }
-
     const VALID_TYPES = ['number', 'red', 'black', 'odd', 'even', 'dozen1', 'dozen2', 'dozen3', 'low', 'high'];
     if (VALID_TYPES.indexOf(betType) === -1) return res.status(400).json({ error: 'invalid bet type' });
     if (STAKE_OPTIONS.indexOf(requestedStake) === -1) return res.status(400).json({ error: 'invalid stake' });
@@ -406,22 +399,41 @@ app.post('/api/place-ticket', async function (req, res) {
         stake = numbers.length * requestedStake; // total cost = one requestedStake per marked number
     }
 
+    // -----------------------------------------------------------------
+    // *** DOUBLE-SUBMIT / RACE-CONDITION FIX (synchronous reservation) ***
+    // Everything above this point is synchronous (no `await`), so this
+    // whole block runs to completion without any other request being
+    // able to interleave. If 2+ identical requests arrive at nearly the
+    // same instant, only the first one to reach this line can claim the
+    // slot below — every request after it is rejected immediately,
+    // before any money is ever touched.
+    // -----------------------------------------------------------------
+    if (!roundTickets[round]) roundTickets[round] = {};
+    if (roundTickets[round][user.id]) {
+        return res.status(409).json({ error: 'በዚህ ዙር ቀድሞውኑ ትኬት ቆርጠዋል' });
+    }
+    const ticketId = round + '-' + user.id;
+    roundTickets[round][user.id] = { pending: true, ticketId: ticketId }; // reserve immediately
+    // -----------------------------------------------------------------
+
     // Risk cap: refuse the bet if it would push any possible outcome's
     // payout liability for this round past the safety threshold.
     const payoutStake = betType === 'number' ? perNumberStake : stake;
     if (wouldExceedCap(round, betType, numbers || [], payoutStake)) {
+        delete roundTickets[round][user.id]; // release the reservation
         return res.status(400).json({ error: 'ይህ ውርርድ በአሁኑ ጊዜ ተቀባይነት የለውም (ከፍተኛ ገደብ ደርሷል)' });
     }
 
-    // Atomic deduct — avoids the same race condition as withdraw (two bets
-    // arriving at once could otherwise both pass a separate balance check).
+    // Now safe to do the async deduction — no one else can race us for
+    // this user+round anymore, since the slot above is already claimed.
     const deduction = await deductIfSufficient(user.id, stake);
-    if (!deduction.ok) return res.status(400).json({ error: 'insufficient balance' });
+    if (!deduction.ok) {
+        delete roundTickets[round][user.id]; // release the reservation
+        return res.status(400).json({ error: 'insufficient balance' });
+    }
 
     addLiability(round, betType, numbers || [], payoutStake);
 
-    if (!roundTickets[round]) roundTickets[round] = {};
-    const ticketId = round + '-' + user.id;
     roundTickets[round][user.id] = { betType: betType, numbers: numbers || [], stake: stake, perNumberStake: perNumberStake, ticketId: ticketId };
     touch(user.id, user.first_name);
     logActivity({ type: 'bet', userId: user.id, name: user.first_name || null, betType: betType, numbers: numbers || [], stake: stake, round: round });
