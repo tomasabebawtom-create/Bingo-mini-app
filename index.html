@@ -264,7 +264,7 @@ let ticketId = null;           // id returned by the server when the ticket was 
 const STAKE_OPTIONS = [5,10,20,30,40,50];   // selectable bet amount, ብር 5 - 50
 const STAKE_MIN = 5, STAKE_MAX = 50;
 let currentStake = 10;         // cost per marked number / per ticket unit — user-selectable, matches server-side min/max
-const MAX_NUMBERS = 8;         // a single ticket may hold at most 8 numbers
+const MAX_NUMBERS = 3;         // a single ticket may hold at most 3 numbers
 const BET_LENGTH = 40;         // seconds players have to pick a number/bet — same constant must exist on the server
 const SPIN_LENGTH = 10;        // seconds the wheel spins for — same constant must exist on the server
 const CYCLE_LENGTH = BET_LENGTH + SPIN_LENGTH; // full round = betting window + spin
