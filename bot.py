@@ -402,6 +402,10 @@ def handle_withdraw_decision(call, approve):
         bot.answer_callback_query(call.id, "⛔ ይህን የማድረግ ፍቃድ የለዎትም።", show_alert=True)
         return
 
+    # ✅ ወዲያውኑ callback ን መልስ (backend request ከመላክ በፊት)፣
+    # Render cold-start ቢዘገይ እንኳን "query too old" እንዳይሆን
+    bot.answer_callback_query(call.id, "⏳ በመስራት ላይ...")
+
     order_id = call.data.split("_", 1)[1]
     endpoint = "confirm" if approve else "reject"
 
@@ -416,7 +420,6 @@ def handle_withdraw_decision(call, approve):
         if response.status_code == 200:
             data = response.json()
             status_text = "✅ ተልኳል" if approve else "❌ ውድቅ ተደርጓል (ገንዘብ ተመልሷል)"
-            bot.answer_callback_query(call.id, status_text)
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
@@ -437,16 +440,16 @@ def handle_withdraw_decision(call, approve):
                 )
         elif response.status_code == 401 or response.status_code == 503:
             logger.error(f"Admin auth failed: {response.status_code} - {response.text}")
-            bot.answer_callback_query(call.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም።", show_alert=True)
+            bot.send_message(call.message.chat.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም።")
         elif response.status_code == 409:
-            bot.answer_callback_query(call.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።", show_alert=True)
+            bot.send_message(call.message.chat.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።")
         else:
             logger.error(f"Withdraw decision failed: {response.status_code} - {response.text}")
-            bot.answer_callback_query(call.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})", show_alert=True)
+            bot.send_message(call.message.chat.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})")
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Withdraw decision failed: {e}")
-        bot.answer_callback_query(call.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።", show_alert=True)
+        bot.send_message(call.message.chat.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
 
 def process_deposit_amount(message):
@@ -516,6 +519,10 @@ def handle_admin_decision(call, approve):
         bot.answer_callback_query(call.id, "⛔ ይህን የማድረግ ፍቃድ የለዎትም።", show_alert=True)
         return
 
+    # ✅ ወዲያውኑ callback ን መልስ (backend request ከመላክ በፊት)፣
+    # Render cold-start ቢዘገይ እንኳን "query too old" እንዳይሆን
+    bot.answer_callback_query(call.id, "⏳ በመስራት ላይ...")
+
     order_id = call.data.split("_", 1)[1]
     endpoint = "confirm" if approve else "reject"
 
@@ -530,7 +537,6 @@ def handle_admin_decision(call, approve):
         if response.status_code == 200:
             data = response.json()
             status_text = "✅ ጸድቋል" if approve else "❌ ውድቅ ተደርጓል"
-            bot.answer_callback_query(call.id, status_text)
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
@@ -551,16 +557,16 @@ def handle_admin_decision(call, approve):
                 )
         elif response.status_code == 401 or response.status_code == 503:
             logger.error(f"Admin auth failed: {response.status_code} - {response.text}")
-            bot.answer_callback_query(call.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም።", show_alert=True)
+            bot.send_message(call.message.chat.id, "⛔ የአድሚን ማረጋገጫ (ADMIN_SECRET) ትክክል አይደለም ወይም አልተዘጋጀም።")
         elif response.status_code == 409:
-            bot.answer_callback_query(call.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።", show_alert=True)
+            bot.send_message(call.message.chat.id, "ይህ ትዕዛዝ አስቀድሞ ተስተናግዷል።")
         else:
             logger.error(f"Admin decision failed: {response.status_code} - {response.text}")
-            bot.answer_callback_query(call.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})", show_alert=True)
+            bot.send_message(call.message.chat.id, f"ስህተት ተፈጥሯል። (Code: {response.status_code})")
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Admin decision failed: {e}")
-        bot.answer_callback_query(call.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።", show_alert=True)
+        bot.send_message(call.message.chat.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
 
 if __name__ == '__main__':
