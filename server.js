@@ -766,6 +766,17 @@ const forcedNextNumber = {
   round: null
 };
 
+/*
+  NEW:
+  preGeneratedNumbers[round] = number
+
+  Random በሚሆንበት ጊዜ ቁጥሩ ገና round ከመዘጋቱ በፊት
+  አስቀድሞ ተፈጥሮ (pre-committed) እንዲቀመጥ ለማድረግ።
+  ይሄው ቁጥር ነው round ሲፈታ (resolveRound) ጥቅም ላይ የሚውለው፣
+  ስለዚህ አስቀድሞ የታየው ቁጥር እና በመጨረሻ የሚወጣው ቁጥር አንድ አይነት ይሆናሉ።
+*/
+const preGeneratedNumbers = {};
+
 function currentRoundId() {
   return Math.floor(
     Date.now() / 1000 / ROUND_LENGTH
@@ -815,6 +826,48 @@ function isRoundFinished(round) {
     getRoundTiming(round);
 
   return nowUnix >= timing.betCloseUnix;
+}
+
+/*
+  NEW:
+  ለተጠቀሰው round ገና ካልተፈጠረ ቁጥር (forced ወይም random)
+  አስቀድሞ ይፈጥራል/ያስቀምጣል እና ይመልሳል፣ ካለም ያለውኑ ይመልሳል።
+  ይሄ ቁጥር ቁጥሩ ገና ከመውጣቱ (round ከመዘጋቱ) በፊት ለ admin ለማሳየት ይጠቅማል፣
+  እና resolveRound() ሲጠራ ተመሳሳዩ ቁጥር ጥቅም ላይ ይውላል።
+*/
+function previewNumberForRound(round) {
+  round = Number(round);
+
+  if (
+    forcedNextNumber.enabled &&
+    Number(forcedNextNumber.round) === round
+  ) {
+    return {
+      number: Number(forcedNextNumber.value),
+      source: 'forced'
+    };
+  }
+
+  if (round in preGeneratedNumbers) {
+    return {
+      number: Number(preGeneratedNumbers[round]),
+      source: 'random'
+    };
+  }
+
+  const number =
+    WHEEL_ORDER[
+      Math.floor(
+        Math.random() * WHEEL_ORDER.length
+      )
+    ];
+
+  preGeneratedNumbers[round] = number;
+
+  return {
+    number,
+    source: 'random'
+  };
 }
 
 function getLiabilityArray(round) {
@@ -1023,6 +1076,14 @@ function cleanupOldLiability(currentRound) {
       }
     }
   );
+
+  Object.keys(preGeneratedNumbers).forEach(
+    function (key) {
+      if (Number(key) < cutoff) {
+        delete preGeneratedNumbers[key];
+      }
+    }
+  );
 }
 
 /* =========================================================
@@ -1103,6 +1164,24 @@ async function resolveRound(round) {
       forcedNextNumber.enabled = false;
       forcedNextNumber.value = null;
       forcedNextNumber.round = null;
+    }
+
+    /*
+      NEW:
+      ካልተገደደ (forced) ግን አስቀድሞ preview
+      ተደርጎ የተፈጠረ ቁጥር ካለ (pre-generated)፣
+      ያንኑ ቁጥር እንጠቀማለን፣ አዲስ random አንፈጥርም።
+      ይህ preview ላይ የታየው ቁጥር ከመጨረሻው ውጤት
+      ጋር ተመሳሳይ እንዲሆን ያረጋግጣል።
+    */
+    if (
+      winningNumber === null &&
+      round in preGeneratedNumbers
+    ) {
+      winningNumber =
+        Number(preGeneratedNumbers[round]);
+
+      delete preGeneratedNumbers[round];
     }
 
     if (winningNumber === null) {
@@ -1193,6 +1272,19 @@ async function resolveRound(round) {
     forcedNextNumber.enabled = false;
     forcedNextNumber.value = null;
     forcedNextNumber.round = null;
+  }
+
+  /*
+    NEW: same pre-generated reuse for in-memory mode
+  */
+  if (
+    winningNumber === null &&
+    round in preGeneratedNumbers
+  ) {
+    winningNumber =
+      Number(preGeneratedNumbers[round]);
+
+    delete preGeneratedNumbers[round];
   }
 
   if (winningNumber === null) {
@@ -1631,6 +1723,13 @@ app.post(
       forcedNextNumber.value = number;
       forcedNextNumber.round = targetRound;
 
+      /*
+        NEW:
+        ይህ round ቀድሞ pre-generated random ቁጥር ኖሮት ከሆነ
+        አሁን forced ስለተቀናበረ ግራ መጋባትን ለማስወገድ እናጠፋዋለን።
+      */
+      delete preGeneratedNumbers[targetRound];
+
       return res.json({
         success: true,
 
@@ -1652,6 +1751,59 @@ app.post(
       return res.status(500).json({
         error:
           'failed to set next number'
+      });
+    }
+  }
+);
+
+/* =========================================================
+   ADMIN: PREVIEW NUMBER (NEW)
+   ቁጥሩ ገና ራውንዱ ከመዝጋቱ በፊት (random ወይም admin የመረጠው
+   ልዩነት ሳይኖረው) ለ admin ብቻ አስቀድሞ እንዲታይ ይመልሳል።
+   ተመሳሳዩ ቁጥር ነው round ሲፈታ ጥቅም ላይ የሚውለው።
+========================================================= */
+
+app.get(
+  '/api/admin/preview-number',
+  requireAdmin,
+  function (req, res) {
+    try {
+      const round =
+        currentRoundId();
+
+      /*
+        Betting ገና ክፍት ከሆነ የአሁኑ round ላይ፣
+        ካልሆነ (ማለትም betting ተዘግቷል ግን round
+        ገና ካላለቀ) ቀጣዩ round ላይ ቀድመን እናዘጋጃለን።
+      */
+      const targetRound =
+        isBettingOpen(round)
+          ? round
+          : round + 1;
+
+      const preview =
+        previewNumberForRound(targetRound);
+
+      return res.json({
+        success: true,
+
+        round: targetRound,
+
+        number: preview.number,
+
+        color: colorFor(preview.number),
+
+        source: preview.source
+      });
+    } catch (err) {
+      console.error(
+        'admin/preview-number error:',
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          'failed to preview number'
       });
     }
   }
