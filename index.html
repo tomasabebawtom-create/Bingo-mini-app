@@ -263,6 +263,7 @@ let currentStake = 10;         // cost per marked number / per ticket unit — u
 const MAX_NUMBERS = 3;         // FIX: a single ticket may hold at most 3 numbers (was 8)
 const BET_LENGTH = 40;         // seconds players have to pick a number/bet — same constant must exist on the server
 const SPIN_LENGTH = 10;        // seconds the wheel spins for — same constant must exist on the server
+const RESULT_DISPLAY_MS = 4000; // FIX: how long the winning/losing message stays on screen before the board resets for the next round
 const CYCLE_LENGTH = BET_LENGTH + SPIN_LENGTH; // full round = betting window + spin
 const HISTORY_MAX = 10;        // how many past results to keep in the history strip
 let resultHistory = [];        // most recent winning numbers, newest first
@@ -637,7 +638,10 @@ async function resolveRound(roundId){
     if (resultHistory.length > HISTORY_MAX) resultHistory.length = HISTORY_MAX;
     renderHistory();
 
-    unlockBoardForNewRound();
+    /* FIX: ውጤቱ (🎉/😔 መልእክቱ) ከመታየቱ በፊት ወዲያውኑ ይጠፋ ስለነበር ተጠቃሚው ውጤቱን
+       ፈጽሞ አያይም ነበር — ወደ "ይምረጡ" ገፅ ወዲያውኑ ይመለስ ነበር (እንደ home page ሆኖ ይታይ ነበር).
+       አሁን ውጤቱ ለ RESULT_DISPLAY_MS ያህል በስክሪኑ ላይ እንዲቆይ ካደረግን በኋላ ብቻ ቦርዱን እናጸዳለን። */
+    setTimeout(unlockBoardForNewRound, RESULT_DISPLAY_MS);
   }, SPIN_LENGTH * 1000);
 }
 
