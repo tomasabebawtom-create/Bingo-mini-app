@@ -34,9 +34,6 @@ const DOZEN_MULTIPLIER = 3;
 const ALL_NUMBERS = Array.from({ length: 37 }, (_, i) => i); // 0..36
 const MAX_ROUND_LIABILITY = Number(process.env.MAX_ROUND_LIABILITY || 50000); // ብር — ማስተካከል ይቻላል
 
-// ማንኛውም ውጤት (outcome, 0-36) ቢወጣ፣ ይህ ትኬት ምን ያህል እንደሚከፍል ይሰላል.
-// `stake` here means: for 'number' bets, the PER-NUMBER stake; for every
-// other bet type, the total ticket stake.
 function payoutForOutcome(betType, numbers, stake, outcome) {
     const color = colorFor(outcome);
     if (betType === 'number') {
@@ -54,7 +51,6 @@ function payoutForOutcome(betType, numbers, stake, outcome) {
     return 0;
 }
 
-// { [round]: [37 numbers] } — running liability per possible outcome
 const roundLiability = {};
 
 function getLiabilityArray(round) {
@@ -80,8 +76,6 @@ function addLiability(round, betType, numbers, stake) {
     }
 }
 
-// Old rounds' liability arrays are no longer needed once resolved — clean up
-// a few cycles back so this object doesn't grow forever.
 function cleanupOldLiability(currentRound) {
     const cutoff = currentRound - 5;
     Object.keys(roundLiability).forEach(function (key) {
@@ -119,25 +113,14 @@ async function changeBalance(userId, delta) {
     return Number(result.rows[0].balance);
 }
 
-// ---------------------------------------------------------------------------
-// Atomic "deduct if enough balance" — prevents the race condition where two
-// simultaneous withdraw requests (e.g. a duplicate bot instance, or a
-// double-tap) both read the same balance, both pass the "enough?" check,
-// and both deduct — leaving the balance negative.
-// Returns { ok: true, balance } if the deduction happened,
-// or { ok: false, balance } if there wasn't enough (balance unchanged).
-// ---------------------------------------------------------------------------
 async function deductIfSufficient(userId, amount) {
     if (!pool) {
-        // In-memory store: Node is single-threaded and this function has no
-        // `await` between the read and the write, so this check-then-write
-        // is already atomic with respect to other requests.
         const current = await getBalance(userId);
         if (current < amount) return { ok: false, balance: current };
         memBalances[userId] = current - amount;
         return { ok: true, balance: memBalances[userId] };
     }
-    await getBalance(userId); // ensure row exists
+    await getBalance(userId);
     const result = await pool.query(
         'UPDATE balances SET balance = balance - $2 WHERE user_id = $1 AND balance >= $2 RETURNING balance',
         [userId, amount]
@@ -148,7 +131,6 @@ async function deductIfSufficient(userId, amount) {
     }
     return { ok: true, balance: Number(result.rows[0].balance) };
 }
-// ---------------------------------------------------------------------------
 
 async function createOrder(type, userId, amount, extra) {
     extra = extra || {};
@@ -185,7 +167,6 @@ async function markOrder(orderId, status, adminId) {
 // Admin helpers
 // ---------------------------------------------------------------------------
 
-// ሁሉንም {userId, balance} ተጠቃሚዎች ይመልሳል
 async function getAllBalances() {
     if (!pool) {
         return Object.keys(memBalances).map(function (userId) {
@@ -198,7 +179,6 @@ async function getAllBalances() {
     });
 }
 
-// የተረጋገጡ (confirmed) deposit/withdraw ትዕዛዞችን ድምር ይመልሳል
 async function getConfirmedTotals() {
     if (!pool) {
         let totalDeposits = 0;
@@ -216,12 +196,8 @@ async function getConfirmedTotals() {
     return { totalDeposits: Number(depResult.rows[0].total), totalWithdrawals: Number(wdResult.rows[0].total) };
 }
 
-// አድሚን routes ን የሚጠብቅ middleware — 'x-admin-secret' header ወይም
-// '?secret=' query parameter በ ADMIN_SECRET እኩል መሆን አለበት።
 function requireAdmin(req, res, next) {
     if (!ADMIN_SECRET) {
-        // ADMIN_SECRET ካልተዘጋጀ (env var ላይ) ማንም እንዳይገባ ሙሉ በሙሉ እንዘጋለን —
-        // ይህ በስህተት ክፍት ሆኖ እንዳይቀር ለመከላከል ነው።
         return res.status(503).json({ error: 'admin access not configured' });
     }
     const provided = req.get('x-admin-secret') || req.query.secret || '';
@@ -230,6 +206,24 @@ function requireAdmin(req, res, next) {
     }
     next();
 }
+
+// ---------------------------------------------------------------------------
+// Admin Forced Next Number Control
+// ---------------------------------------------------------------------------
+let forcedNextNumber = null;
+
+app.post('/api/admin/set-next-number', requireAdmin, function (req, res) {
+    const { number } = req.body;
+    if (number === null || (typeof number === 'number' && number >= 0 && number <= 36)) {
+        forcedNextNumber = number;
+        return res.json({ 
+            success: true, 
+            message: `ቀጥሎ የሚወጣው ቁጥር ወደ ${number === null ? 'ራንደም (Random)' : number} ተስተካክሏል` 
+        });
+    }
+    res.status(400).json({ error: 'ልክ ያልሆነ ቁጥር (ከ 0 እስከ 36 መሆን አለበት)' });
+});
+// ---------------------------------------------------------------------------
 
 app.get('/api/admin/stats', requireAdmin, async function (req, res) {
     try {
@@ -269,16 +263,11 @@ app.get('/api/admin/users-report', requireAdmin, async function (req, res) {
     }
 });
 
-// የቅርብ ጊዜ እንቅስቃሴ (ውርርድ/ውጤት) ዝርዝር — ማን ተጫውቷል፣ ማን አሸነፈ፣ ስንት ብር
 app.get('/api/admin/activity', requireAdmin, async function (req, res) {
     const limit = Math.min(Number(req.query.limit) || 50, ACTIVITY_LOG_MAX);
     res.json({ activity: activityLog.slice(0, limit) });
 });
 
-// ✅ አዲስ፦ አድሚን ማንኛውንም ዙር (የአሁኑን ወይም ያለፈውን) ውጤት አስቀድሞ/በኋላ ማየት
-// የሚችልበት endpoint። ተራ ተጫዋቾች ይህን ማግኘት አይችሉም (ADMIN_SECRET ያስፈልጋል)።
-// ማስታወሻ፦ ይህ ውጤቱን አይቀይረውም/እንደገና አይመርጥም — ቀድሞ ካልተመረጠ ይመርጣል፣
-// ቀድሞ ከተመረጠ ያንኑ ነባር ውጤት ብቻ ይመልሳል (ፍትሃዊነቱ አይነካም)።
 app.get('/api/admin/round-result', requireAdmin, function (req, res) {
     const round = parseInt(req.query.round, 10) || currentRoundId();
     const result = resolveRound(round);
@@ -335,12 +324,17 @@ const roundTickets = {};
 const resolvedRounds = {};
 function currentRoundId() { return Math.floor(Date.now() / 1000 / ROUND_LENGTH); }
 
-// ✅ ተስተካክሏል፦ ይህ function ብቻ ውጤት (winning number) ይመርጣል/ያመነጫል፣
-// ካልተመረጠ። ራሱ ችግር የለውም — ችግር የነበረው ይህ ገና ዙሩ ሳያልቅ ለ /api/round-result
-// (ማንኛውም ተጫዋች ሊጠራው ለሚችለው endpoint) ክፍት ሆኖ መጠራቱ ነበር።
 function resolveRound(round) {
     if (!resolvedRounds[round]) {
-        const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
+        let winningNumber;
+        
+        if (round === currentRoundId() && forcedNextNumber !== null) {
+            winningNumber = forcedNextNumber;
+            forcedNextNumber = null;
+        } else {
+            winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
+        }
+
         resolvedRounds[round] = { winning_number: winningNumber, winning_color: colorFor(winningNumber) };
         cleanupOldLiability(round);
     }
@@ -348,13 +342,10 @@ function resolveRound(round) {
 }
 
 // ---------------------------------------------------------------------------
-// Live monitoring: who's online right now, and a rolling feed of recent bets
-// / wins so the admin can watch activity without querying the DB.
-// ---------------------------------------------------------------------------
-const ONLINE_WINDOW_MS = 30 * 1000; // ተጠቃሚው ባለፉት 30 ሰከንድ ውስጥ ጥያቄ ካደረገ "online" ተብሎ ይቆጠራል
-const lastSeen = {}; // userId -> timestamp (ms)
+const ONLINE_WINDOW_MS = 30 * 1000;
+const lastSeen = {};
 const ACTIVITY_LOG_MAX = 200;
-const activityLog = []; // newest first
+const activityLog = [];
 
 function touch(userId, name) {
     lastSeen[userId] = { ts: Date.now(), name: name || null };
@@ -406,8 +397,6 @@ app.post('/api/place-ticket', async function (req, res) {
     if (VALID_TYPES.indexOf(betType) === -1) return res.status(400).json({ error: 'invalid bet type' });
     if (STAKE_OPTIONS.indexOf(requestedStake) === -1) return res.status(400).json({ error: 'invalid stake' });
 
-    // perNumberStake is what each single number costs / what a single number pays out against.
-    // For outside bets, the whole ticket is one unit at requestedStake.
     const perNumberStake = requestedStake;
     let stake = requestedStake;
 
@@ -418,39 +407,25 @@ app.post('/api/place-ticket', async function (req, res) {
             const n = numbers[i];
             if (typeof n !== 'number' || n < 0 || n > 36) return res.status(400).json({ error: 'invalid number' });
         }
-        stake = numbers.length * requestedStake; // total cost = one requestedStake per marked number
+        stake = numbers.length * requestedStake;
     }
 
-    // -----------------------------------------------------------------
-    // *** DOUBLE-SUBMIT / RACE-CONDITION FIX (synchronous reservation) ***
-    // Everything above this point is synchronous (no `await`), so this
-    // whole block runs to completion without any other request being
-    // able to interleave. If 2+ identical requests arrive at nearly the
-    // same instant, only the first one to reach this line can claim the
-    // slot below — every request after it is rejected immediately,
-    // before any money is ever touched.
-    // -----------------------------------------------------------------
     if (!roundTickets[round]) roundTickets[round] = {};
     if (roundTickets[round][user.id]) {
         return res.status(409).json({ error: 'በዚህ ዙር ቀድሞውኑ ትኬት ቆርጠዋል' });
     }
     const ticketId = round + '-' + user.id;
-    roundTickets[round][user.id] = { pending: true, ticketId: ticketId }; // reserve immediately
-    // -----------------------------------------------------------------
+    roundTickets[round][user.id] = { pending: true, ticketId: ticketId };
 
-    // Risk cap: refuse the bet if it would push any possible outcome's
-    // payout liability for this round past the safety threshold.
     const payoutStake = betType === 'number' ? perNumberStake : stake;
     if (wouldExceedCap(round, betType, numbers || [], payoutStake)) {
-        delete roundTickets[round][user.id]; // release the reservation
+        delete roundTickets[round][user.id];
         return res.status(400).json({ error: 'ይህ ውርርድ በአሁኑ ጊዜ ተቀባይነት የለውም (ከፍተኛ ገደብ ደርሷል)' });
     }
 
-    // Now safe to do the async deduction — no one else can race us for
-    // this user+round anymore, since the slot above is already claimed.
     const deduction = await deductIfSufficient(user.id, stake);
     if (!deduction.ok) {
-        delete roundTickets[round][user.id]; // release the reservation
+        delete roundTickets[round][user.id];
         return res.status(400).json({ error: 'insufficient balance' });
     }
 
@@ -469,11 +444,6 @@ app.get('/api/round-result', async function (req, res) {
     const user = validateInitData(initData);
     if (!user) return res.status(401).json({ error: 'invalid initData' });
 
-    // ✅ ደህንነት ማስተካከያ፦ ዙሩ (round) ገና ካላለቀ (currentRoundId() ካልበለጠው)
-    // ውጤቱ ፈጽሞ አይመነጭም/አይገለጽም። ከዚህ በፊት ይህ ገደብ ስላልነበረ፣ ማንም ተጫዋች
-    // ውርርድ ሳያደርግ ብቻ ይህን endpoint በመጥራት ውጤቱን አስቀድሞ አውቆ ትክክለኛውን
-    // ቁጥር ላይ ውርርድ ማድረግ ይችል ነበር። አሁን ዙሩ በትክክል እስኪያልቅ ድረስ
-      // "round not finished" ተብሎ ይመለሳል።
     if (round >= currentRoundId()) {
         return res.status(425).json({ error: 'round not finished yet' });
     }
@@ -486,7 +456,6 @@ app.get('/api/round-result', async function (req, res) {
     const ticket = roundTickets[round] && roundTickets[round][user.id];
     if (ticket && ticket.ticketId === ticketId) {
         if (ticket.betType === 'number') {
-            // pays perNumberStake * 36 (the amount actually risked on THAT single number), not the ticket total
             if (ticket.numbers.indexOf(winning_number) !== -1) { won = true; amount = ticket.perNumberStake * SPIN_PAYOUT_MULTIPLIER; }
         } else if (ticket.betType === 'red' || ticket.betType === 'black') {
             won = winning_color === ticket.betType;
@@ -556,10 +525,6 @@ app.post('/api/withdraw/request', async function (req, res) {
     if (!userId || typeof amount !== 'number' || amount <= 0) return res.status(400).json({ error: 'Invalid request' });
     if (!phone || typeof phone !== 'string' || !phone.trim()) return res.status(400).json({ error: 'Phone number required' });
 
-    // Atomic check-and-deduct: prevents two concurrent withdraw requests
-    // (e.g. from a duplicate bot instance, or a double-tap) from both
-    // reading the same balance, both passing the check, and both
-    // deducting — which would leave the balance negative.
     const deduction = await deductIfSufficient(String(userId), amount);
     if (!deduction.ok) return res.status(400).json({ error: 'insufficient balance' });
 
