@@ -221,16 +221,11 @@ async function changeBalance(userId, delta) {
   }
 
   if (!pool) {
-    const current =
-      await getBalance(userId);
-
-    const next =
-      current + delta;
+    const current = await getBalance(userId);
+    const next = current + delta;
 
     if (next < 0) {
-      throw new Error(
-        'Balance cannot become negative'
-      );
+      throw new Error('Balance cannot become negative');
     }
 
     memBalances[userId] = next;
@@ -255,20 +250,13 @@ async function changeBalance(userId, delta) {
   );
 
   if (result.rows.length === 0) {
-    throw new Error(
-      'Balance update rejected'
-    );
+    throw new Error('Balance update rejected');
   }
 
-  return Number(
-    result.rows[0].balance
-  );
+  return Number(result.rows[0].balance);
 }
 
-async function deductIfSufficient(
-  userId,
-  amount
-) {
+async function deductIfSufficient(userId, amount) {
   userId = String(userId);
   amount = Number(amount);
 
@@ -278,14 +266,12 @@ async function deductIfSufficient(
   ) {
     return {
       ok: false,
-      balance:
-        await getBalance(userId)
+      balance: await getBalance(userId)
     };
   }
 
   if (!pool) {
-    const current =
-      await getBalance(userId);
+    const current = await getBalance(userId);
 
     if (current < amount) {
       return {
@@ -294,13 +280,11 @@ async function deductIfSufficient(
       };
     }
 
-    memBalances[userId] =
-      current - amount;
+    memBalances[userId] = current - amount;
 
     return {
       ok: true,
-      balance:
-        Number(memBalances[userId])
+      balance: Number(memBalances[userId])
     };
   }
 
@@ -321,8 +305,7 @@ async function deductIfSufficient(
   );
 
   if (result.rows.length === 0) {
-    const current =
-      await getBalance(userId);
+    const current = await getBalance(userId);
 
     return {
       ok: false,
@@ -332,8 +315,7 @@ async function deductIfSufficient(
 
   return {
     ok: true,
-    balance:
-      Number(result.rows[0].balance)
+    balance: Number(result.rows[0].balance)
   };
 }
 
@@ -341,12 +323,7 @@ async function deductIfSufficient(
    ORDERS
 ========================================================= */
 
-async function createOrder(
-  type,
-  userId,
-  amount,
-  extra
-) {
+async function createOrder(type, userId, amount, extra) {
   extra = extra || {};
 
   userId = String(userId);
@@ -356,24 +333,20 @@ async function createOrder(
     !Number.isFinite(amount) ||
     amount <= 0
   ) {
-    throw new Error(
-      'Invalid order amount'
-    );
+    throw new Error('Invalid order amount');
   }
 
   if (!pool) {
-    const orderId =
-      String(memOrders.nextId++);
+    const orderId = String(memOrders.nextId++);
 
     memOrders.orders[orderId] = {
+      orderId,
       type,
       userId,
       amount,
       status: 'pending',
-      createdAt:
-        new Date().toISOString(),
-      phone:
-        extra.phone || null
+      createdAt: new Date().toISOString(),
+      phone: extra.phone || null
     };
 
     return orderId;
@@ -400,19 +373,14 @@ async function createOrder(
     ]
   );
 
-  return String(
-    result.rows[0].order_id
-  );
+  return String(result.rows[0].order_id);
 }
 
 async function getOrder(orderId) {
   orderId = String(orderId);
 
   if (!pool) {
-    return (
-      memOrders.orders[orderId] ||
-      null
-    );
+    return memOrders.orders[orderId] || null;
   }
 
   const result = await pool.query(
@@ -431,37 +399,23 @@ async function getOrder(orderId) {
   const row = result.rows[0];
 
   return {
-    orderId:
-      String(row.order_id),
-    type:
-      row.type,
-    userId:
-      row.user_id,
-    amount:
-      Number(row.amount),
-    status:
-      row.status,
-    phone:
-      row.phone,
-    confirmedBy:
-      row.confirmed_by,
-    rejectedBy:
-      row.rejected_by
+    orderId: String(row.order_id),
+    type: row.type,
+    userId: row.user_id,
+    amount: Number(row.amount),
+    status: row.status,
+    phone: row.phone,
+    confirmedBy: row.confirmed_by,
+    rejectedBy: row.rejected_by
   };
 }
 
-async function markOrder(
-  orderId,
-  status,
-  adminId
-) {
+async function markOrder(orderId, status, adminId) {
   orderId = String(orderId);
-  adminId =
-    String(adminId || 'admin');
+  adminId = String(adminId || 'admin');
 
   if (!pool) {
-    const order =
-      memOrders.orders[orderId];
+    const order = memOrders.orders[orderId];
 
     if (!order) {
       return false;
@@ -512,13 +466,10 @@ async function markOrder(
 
 async function getAllBalances() {
   if (!pool) {
-    return Object.keys(
-      memBalances
-    ).map(function (userId) {
+    return Object.keys(memBalances).map(function (userId) {
       return {
         userId,
-        balance:
-          Number(memBalances[userId])
+        balance: Number(memBalances[userId])
       };
     });
   }
@@ -533,16 +484,12 @@ async function getAllBalances() {
     `
   );
 
-  return result.rows.map(
-    function (row) {
-      return {
-        userId:
-          row.user_id,
-        balance:
-          Number(row.balance)
-      };
-    }
-  );
+  return result.rows.map(function (row) {
+    return {
+      userId: row.user_id,
+      balance: Number(row.balance)
+    };
+  });
 }
 
 async function getConfirmedTotals() {
@@ -550,37 +497,21 @@ async function getConfirmedTotals() {
     let totalDeposits = 0;
     let totalWithdrawals = 0;
 
-    Object.keys(
-      memOrders.orders
-    ).forEach(
-      function (orderId) {
-        const order =
-          memOrders.orders[orderId];
+    Object.keys(memOrders.orders).forEach(function (orderId) {
+      const order = memOrders.orders[orderId];
 
-        if (
-          order.status !==
-          'confirmed'
-        ) {
-          return;
-        }
-
-        if (
-          order.type ===
-          'deposit'
-        ) {
-          totalDeposits +=
-            Number(order.amount);
-        }
-
-        if (
-          order.type ===
-          'withdraw'
-        ) {
-          totalWithdrawals +=
-            Number(order.amount);
-        }
+      if (order.status !== 'confirmed') {
+        return;
       }
-    );
+
+      if (order.type === 'deposit') {
+        totalDeposits += Number(order.amount);
+      }
+
+      if (order.type === 'withdraw') {
+        totalWithdrawals += Number(order.amount);
+      }
+    });
 
     return {
       totalDeposits,
@@ -588,34 +519,25 @@ async function getConfirmedTotals() {
     };
   }
 
-  const depResult =
-    await pool.query(`
-      SELECT
-        COALESCE(SUM(amount), 0) AS total
-      FROM orders
-      WHERE type = 'deposit'
-        AND status = 'confirmed'
-    `);
+  const depResult = await pool.query(`
+    SELECT
+      COALESCE(SUM(amount), 0) AS total
+    FROM orders
+    WHERE type = 'deposit'
+      AND status = 'confirmed'
+  `);
 
-  const wdResult =
-    await pool.query(`
-      SELECT
-        COALESCE(SUM(amount), 0) AS total
-      FROM orders
-      WHERE type = 'withdraw'
-        AND status = 'confirmed'
-    `);
+  const wdResult = await pool.query(`
+    SELECT
+      COALESCE(SUM(amount), 0) AS total
+    FROM orders
+    WHERE type = 'withdraw'
+      AND status = 'confirmed'
+  `);
 
   return {
-    totalDeposits:
-      Number(
-        depResult.rows[0].total
-      ),
-
-    totalWithdrawals:
-      Number(
-        wdResult.rows[0].total
-      )
+    totalDeposits: Number(depResult.rows[0].total),
+    totalWithdrawals: Number(wdResult.rows[0].total)
   };
 }
 
@@ -623,15 +545,10 @@ async function getConfirmedTotals() {
    ADMIN AUTH
 ========================================================= */
 
-function requireAdmin(
-  req,
-  res,
-  next
-) {
+function requireAdmin(req, res, next) {
   if (!ADMIN_SECRET) {
     return res.status(503).json({
-      error:
-        'admin access not configured'
+      error: 'admin access not configured'
     });
   }
 
@@ -642,32 +559,25 @@ function requireAdmin(
 
   if (!provided) {
     return res.status(401).json({
-      error:
-        'unauthorized'
+      error: 'unauthorized'
     });
   }
 
   const providedBuffer =
-    Buffer.from(
-      String(provided)
-    );
+    Buffer.from(String(provided));
 
   const expectedBuffer =
-    Buffer.from(
-      String(ADMIN_SECRET)
-    );
+    Buffer.from(String(ADMIN_SECRET));
 
   if (
-    providedBuffer.length !==
-      expectedBuffer.length ||
+    providedBuffer.length !== expectedBuffer.length ||
     !crypto.timingSafeEqual(
       providedBuffer,
       expectedBuffer
     )
   ) {
     return res.status(401).json({
-      error:
-        'unauthorized'
+      error: 'unauthorized'
     });
   }
 
@@ -678,9 +588,7 @@ function requireAdmin(
    TELEGRAM INIT DATA
 ========================================================= */
 
-function validateInitData(
-  initData
-) {
+function validateInitData(initData) {
   if (
     !initData ||
     typeof initData !== 'string'
@@ -697,13 +605,9 @@ function validateInitData(
   }
 
   try {
-    const params =
-      new URLSearchParams(
-        initData
-      );
+    const params = new URLSearchParams(initData);
 
-    const hash =
-      params.get('hash');
+    const hash = params.get('hash');
 
     if (!hash) {
       return null;
@@ -712,62 +616,37 @@ function validateInitData(
     params.delete('hash');
 
     const entries =
-      Array.from(
-        params.entries()
-      ).sort(
-        function (a, b) {
-          return a[0].localeCompare(
-            b[0]
-          );
-        }
-      );
+      Array.from(params.entries()).sort(function (a, b) {
+        return a[0].localeCompare(b[0]);
+      });
 
     const dataCheckString =
       entries
         .map(function (entry) {
-          return (
-            entry[0] +
-            '=' +
-            entry[1]
-          );
+          return entry[0] + '=' + entry[1];
         })
         .join('\n');
 
     const secretKey =
       crypto
-        .createHmac(
-          'sha256',
-          'WebAppData'
-        )
+        .createHmac('sha256', 'WebAppData')
         .update(BOT_TOKEN)
         .digest();
 
     const computedHash =
       crypto
-        .createHmac(
-          'sha256',
-          secretKey
-        )
-        .update(
-          dataCheckString
-        )
+        .createHmac('sha256', secretKey)
+        .update(dataCheckString)
         .digest('hex');
 
     const hashA =
-      Buffer.from(
-        computedHash,
-        'hex'
-      );
+      Buffer.from(computedHash, 'hex');
 
     const hashB =
-      Buffer.from(
-        hash,
-        'hex'
-      );
+      Buffer.from(hash, 'hex');
 
     if (
-      hashA.length !==
-        hashB.length ||
+      hashA.length !== hashB.length ||
       !crypto.timingSafeEqual(
         hashA,
         hashB
@@ -776,28 +655,21 @@ function validateInitData(
       return null;
     }
 
-    const userJson =
-      params.get('user');
+    const userJson = params.get('user');
 
     if (!userJson) {
       return null;
     }
 
-    const user =
-      JSON.parse(userJson);
+    const user = JSON.parse(userJson);
 
-    if (
-      !user ||
-      !user.id
-    ) {
+    if (!user || !user.id) {
       return null;
     }
 
     return {
-      id:
-        String(user.id),
-      first_name:
-        user.first_name || ''
+      id: String(user.id),
+      first_name: user.first_name || ''
     };
   } catch (err) {
     console.error(
@@ -809,14 +681,10 @@ function validateInitData(
   }
 }
 
-function parseUnsafe(
-  initData
-) {
+function parseUnsafe(initData) {
   try {
     const params =
-      new URLSearchParams(
-        initData
-      );
+      new URLSearchParams(initData);
 
     const userJson =
       params.get('user');
@@ -828,18 +696,13 @@ function parseUnsafe(
     const user =
       JSON.parse(userJson);
 
-    if (
-      !user ||
-      !user.id
-    ) {
+    if (!user || !user.id) {
       return null;
     }
 
     return {
-      id:
-        String(user.id),
-      first_name:
-        user.first_name || ''
+      id: String(user.id),
+      first_name: user.first_name || ''
     };
   } catch (err) {
     return null;
@@ -854,54 +717,35 @@ const lastSeen = {};
 
 const activityLog = [];
 
-function touch(
-  userId,
-  name
-) {
+function touch(userId, name) {
   lastSeen[String(userId)] = {
     ts: Date.now(),
-    name:
-      name || null
+    name: name || null
   };
 }
 
 function countOnline() {
   const cutoff =
-    Date.now() -
-    ONLINE_WINDOW_MS;
+    Date.now() - ONLINE_WINDOW_MS;
 
   let count = 0;
 
-  Object.keys(
-    lastSeen
-  ).forEach(
-    function (userId) {
-      if (
-        lastSeen[userId].ts >=
-        cutoff
-      ) {
-        count++;
-      }
+  Object.keys(lastSeen).forEach(function (userId) {
+    if (lastSeen[userId].ts >= cutoff) {
+      count++;
     }
-  );
+  });
 
   return count;
 }
 
-function logActivity(
-  entry
-) {
-  entry.time =
-    new Date().toISOString();
+function logActivity(entry) {
+  entry.time = new Date().toISOString();
 
   activityLog.unshift(entry);
 
-  if (
-    activityLog.length >
-    ACTIVITY_LOG_MAX
-  ) {
-    activityLog.length =
-      ACTIVITY_LOG_MAX;
+  if (activityLog.length > ACTIVITY_LOG_MAX) {
+    activityLog.length = ACTIVITY_LOG_MAX;
   }
 }
 
@@ -911,34 +755,34 @@ function logActivity(
 
 const roundLiability = {};
 
+/*
+  FIX:
+  forcedNextNumber ከnumber ብቻ ሳይሆን
+  የትኛው round ላይ እንደሚሰራም እንይዛለን።
+*/
 const forcedNextNumber = {
   value: null,
-  enabled: false
+  enabled: false,
+  round: null
 };
 
 function currentRoundId() {
   return Math.floor(
-    Date.now() /
-      1000 /
-      ROUND_LENGTH
+    Date.now() / 1000 / ROUND_LENGTH
   );
 }
 
-function getRoundTiming(
-  round
-) {
+function getRoundTiming(round) {
   round = Number(round);
 
   const startUnix =
     round * ROUND_LENGTH;
 
   const betCloseUnix =
-    startUnix +
-    BET_LENGTH;
+    startUnix + BET_LENGTH;
 
   const roundEndUnix =
-    startUnix +
-    ROUND_LENGTH;
+    startUnix + ROUND_LENGTH;
 
   return {
     startUnix,
@@ -947,31 +791,34 @@ function getRoundTiming(
   };
 }
 
-function isBettingOpen(
-  round
-) {
+function isBettingOpen(round) {
   const nowUnix =
-    Math.floor(
-      Date.now() / 1000
-    );
+    Math.floor(Date.now() / 1000);
 
   const timing =
     getRoundTiming(round);
 
   return (
-    nowUnix >=
-      timing.startUnix &&
-    nowUnix <
-      timing.betCloseUnix
+    nowUnix >= timing.startUnix &&
+    nowUnix < timing.betCloseUnix
   );
 }
 
-function getLiabilityArray(
-  round
-) {
-  if (
-    !roundLiability[round]
-  ) {
+/*
+  Round የተጠናቀቀ መሆኑን ለመፈተሽ
+*/
+function isRoundFinished(round) {
+  const nowUnix =
+    Math.floor(Date.now() / 1000);
+
+  const timing =
+    getRoundTiming(round);
+
+  return nowUnix >= timing.betCloseUnix;
+}
+
+function getLiabilityArray(round) {
+  if (!roundLiability[round]) {
     roundLiability[round] =
       new Array(37).fill(0);
   }
@@ -985,130 +832,86 @@ function payoutForOutcome(
   stake,
   outcome
 ) {
-  const color =
-    colorFor(outcome);
+  const color = colorFor(outcome);
 
-  if (
-    betType ===
-    'number'
-  ) {
-    return (
-      numbers.indexOf(outcome) !==
-      -1
-    )
-      ? stake *
-        SPIN_PAYOUT_MULTIPLIER
+  if (betType === 'number') {
+    return numbers.indexOf(outcome) !== -1
+      ? stake * SPIN_PAYOUT_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'red'
-  ) {
+  if (betType === 'red') {
     return color === 'red'
-      ? stake *
-        EVEN_MONEY_MULTIPLIER
+      ? stake * EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'black'
-  ) {
+  if (betType === 'black') {
     return color === 'black'
-      ? stake *
-        EVEN_MONEY_MULTIPLIER
+      ? stake * EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'odd'
-  ) {
+  if (betType === 'odd') {
     return (
       outcome !== 0 &&
       outcome % 2 === 1
     )
-      ? stake *
-        EVEN_MONEY_MULTIPLIER
+      ? stake * EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'even'
-  ) {
+  if (betType === 'even') {
     return (
       outcome !== 0 &&
       outcome % 2 === 0
     )
-      ? stake *
-        EVEN_MONEY_MULTIPLIER
+      ? stake * EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'low'
-  ) {
+  if (betType === 'low') {
     return (
       outcome >= 1 &&
       outcome <= 18
     )
-      ? stake *
-        EVEN_MONEY_MULTIPLIER
+      ? stake * EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'high'
-  ) {
+  if (betType === 'high') {
     return (
       outcome >= 19 &&
       outcome <= 36
     )
-      ? stake *
-        EVEN_MONEY_MULTIPLIER
+      ? stake * EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'dozen1'
-  ) {
+  if (betType === 'dozen1') {
     return (
       outcome >= 1 &&
       outcome <= 12
     )
-      ? stake *
-        DOZEN_MULTIPLIER
+      ? stake * DOZEN_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'dozen2'
-  ) {
+  if (betType === 'dozen2') {
     return (
       outcome >= 13 &&
       outcome <= 24
     )
-      ? stake *
-        DOZEN_MULTIPLIER
+      ? stake * DOZEN_MULTIPLIER
       : 0;
   }
 
-  if (
-    betType ===
-    'dozen3'
-  ) {
+  if (betType === 'dozen3') {
     return (
       outcome >= 25 &&
       outcome <= 36
     )
-      ? stake *
-        DOZEN_MULTIPLIER
+      ? stake * DOZEN_MULTIPLIER
       : 0;
   }
 
@@ -1141,8 +944,7 @@ function wouldExceedCap(
       );
 
     if (
-      liability[outcome] +
-        added >
+      liability[outcome] + added >
       MAX_ROUND_LIABILITY
     ) {
       return true;
@@ -1204,29 +1006,19 @@ function removeLiability(
         outcome
       );
 
-    if (
-      liability[outcome] <
-      0
-    ) {
+    if (liability[outcome] < 0) {
       liability[outcome] = 0;
     }
   }
 }
 
-function cleanupOldLiability(
-  currentRound
-) {
+function cleanupOldLiability(currentRound) {
   const cutoff =
     currentRound - 5;
 
-  Object.keys(
-    roundLiability
-  ).forEach(
+  Object.keys(roundLiability).forEach(
     function (key) {
-      if (
-        Number(key) <
-        cutoff
-      ) {
+      if (Number(key) < cutoff) {
         delete roundLiability[key];
       }
     }
@@ -1237,19 +1029,37 @@ function cleanupOldLiability(
    ROUND RESOLUTION
 ========================================================= */
 
-async function resolveRound(
-  round
-) {
+async function resolveRound(round) {
   round = Number(round);
 
+  if (!Number.isInteger(round)) {
+    throw new Error('Invalid round');
+  }
+
+  /*
+    IMPORTANT FIX:
+    Current round betting ገና ካልተዘጋ
+    result አንፈጥርም።
+
+    ይህ Admin በcurrent round ላይ
+    result በማስኬድ forced number እንዳይበላ
+    ይከላከላል።
+  */
+  const currentRound =
+    currentRoundId();
+
   if (
-    !Number.isInteger(round)
+    round === currentRound &&
+    !isRoundFinished(round)
   ) {
     throw new Error(
-      'Invalid round'
+      'Round is still open for betting'
     );
   }
 
+  /*
+    DATABASE MODE
+  */
   if (pool) {
     const existing =
       await pool.query(
@@ -1263,37 +1073,39 @@ async function resolveRound(
         [round]
       );
 
-    if (
-      existing.rows.length >
-      0
-    ) {
+    if (existing.rows.length > 0) {
+      cleanupOldLiability(round);
+
       return {
         winning_number:
           Number(
-            existing.rows[0]
-              .winning_number
+            existing.rows[0].winning_number
           ),
 
         winning_color:
-          existing.rows[0]
-            .winning_color
+          existing.rows[0].winning_color
       };
     }
 
-    let winningNumber;
+    let winningNumber = null;
 
+    /*
+      Forced number የተዘጋጀው
+      ለዚህ round ብቻ ከሆነ እንጠቀማለን።
+    */
     if (
-      forcedNextNumber.enabled
+      forcedNextNumber.enabled &&
+      Number(forcedNextNumber.round) === round
     ) {
       winningNumber =
-        forcedNextNumber.value;
+        Number(forcedNextNumber.value);
 
-      forcedNextNumber.enabled =
-        false;
+      forcedNextNumber.enabled = false;
+      forcedNextNumber.value = null;
+      forcedNextNumber.round = null;
+    }
 
-      forcedNextNumber.value =
-        null;
-    } else {
+    if (winningNumber === null) {
       winningNumber =
         WHEEL_ORDER[
           Math.floor(
@@ -1304,10 +1116,13 @@ async function resolveRound(
     }
 
     const winningColor =
-      colorFor(
-        winningNumber
-      );
+      colorFor(winningNumber);
 
+    /*
+      INSERT ON CONFLICT:
+      ሁለት request ቢመጡም
+      አንድ round አንድ result ብቻ ይኖረዋል።
+    */
     await pool.query(
       `
       INSERT INTO rounds
@@ -1340,43 +1155,47 @@ async function resolveRound(
         [round]
       );
 
-    cleanupOldLiability(
-      round
-    );
+    cleanupOldLiability(round);
+
+    if (final.rows.length === 0) {
+      throw new Error(
+        'Round result was not created'
+      );
+    }
 
     return {
       winning_number:
         Number(
-          final.rows[0]
-            .winning_number
+          final.rows[0].winning_number
         ),
 
       winning_color:
-        final.rows[0]
-          .winning_color
+        final.rows[0].winning_color
     };
   }
 
-  if (
-    memRounds[round]
-  ) {
+  /*
+    IN-MEMORY MODE
+  */
+  if (memRounds[round]) {
     return memRounds[round];
   }
 
-  let winningNumber;
+  let winningNumber = null;
 
   if (
-    forcedNextNumber.enabled
+    forcedNextNumber.enabled &&
+    Number(forcedNextNumber.round) === round
   ) {
     winningNumber =
-      forcedNextNumber.value;
+      Number(forcedNextNumber.value);
 
-    forcedNextNumber.enabled =
-      false;
+    forcedNextNumber.enabled = false;
+    forcedNextNumber.value = null;
+    forcedNextNumber.round = null;
+  }
 
-    forcedNextNumber.value =
-      null;
-  } else {
+  if (winningNumber === null) {
     winningNumber =
       WHEEL_ORDER[
         Math.floor(
@@ -1391,14 +1210,10 @@ async function resolveRound(
       winningNumber,
 
     winning_color:
-      colorFor(
-        winningNumber
-      )
+      colorFor(winningNumber)
   };
 
-  cleanupOldLiability(
-    round
-  );
+  cleanupOldLiability(round);
 
   return memRounds[round];
 }
@@ -1407,10 +1222,7 @@ async function resolveRound(
    TICKETS
 ========================================================= */
 
-async function getTicket(
-  round,
-  userId
-) {
+async function getTicket(round, userId) {
   const ticketId =
     String(round) +
     '-' +
@@ -1433,10 +1245,7 @@ async function getTicket(
       [ticketId]
     );
 
-  if (
-    result.rows.length ===
-    0
-  ) {
+  if (result.rows.length === 0) {
     return null;
   }
 
@@ -1465,9 +1274,7 @@ async function getTicket(
       Number(row.stake),
 
     perNumberStake:
-      Number(
-        row.per_number_stake
-      ),
+      Number(row.per_number_stake),
 
     settled:
       row.settled,
@@ -1476,34 +1283,22 @@ async function getTicket(
       row.won,
 
     payout:
-      Number(
-        row.payout || 0
-      ),
+      Number(row.payout || 0),
 
     winningNumber:
       row.winning_number === null
         ? null
-        : Number(
-            row.winning_number
-          )
+        : Number(row.winning_number)
   };
 }
 
-async function createTicket(
-  ticket
-) {
+async function createTicket(ticket) {
   if (!pool) {
-    if (
-      memTickets[
-        ticket.ticketId
-      ]
-    ) {
+    if (memTickets[ticket.ticketId]) {
       return false;
     }
 
-    memTickets[
-      ticket.ticketId
-    ] = ticket;
+    memTickets[ticket.ticketId] = ticket;
 
     return true;
   }
@@ -1539,9 +1334,7 @@ async function createTicket(
         ticket.round,
         ticket.userId,
         ticket.betType,
-        JSON.stringify(
-          ticket.numbers
-        ),
+        JSON.stringify(ticket.numbers),
         ticket.stake,
         ticket.perNumberStake
       ]
@@ -1570,27 +1363,20 @@ async function settleTicket(
     };
   }
 
-  if (
-    ticket.settled
-  ) {
+  if (ticket.settled) {
     return {
       exists: true,
       alreadySettled: true,
       won: !!ticket.won,
       amount:
-        Number(
-          ticket.payout || 0
-        )
+        Number(ticket.payout || 0)
     };
   }
 
   let won = false;
   let amount = 0;
 
-  if (
-    ticket.betType ===
-    'number'
-  ) {
+  if (ticket.betType === 'number') {
     won =
       ticket.numbers.indexOf(
         winningNumber
@@ -1604,15 +1390,11 @@ async function settleTicket(
   }
 
   else if (
-    ticket.betType ===
-      'red' ||
-    ticket.betType ===
-      'black'
+    ticket.betType === 'red' ||
+    ticket.betType === 'black'
   ) {
     won =
-      colorFor(
-        winningNumber
-      ) ===
+      colorFor(winningNumber) ===
       ticket.betType;
 
     amount =
@@ -1622,10 +1404,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'odd'
-  ) {
+  else if (ticket.betType === 'odd') {
     won =
       winningNumber !== 0 &&
       winningNumber % 2 === 1;
@@ -1637,10 +1416,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'even'
-  ) {
+  else if (ticket.betType === 'even') {
     won =
       winningNumber !== 0 &&
       winningNumber % 2 === 0;
@@ -1652,10 +1428,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'low'
-  ) {
+  else if (ticket.betType === 'low') {
     won =
       winningNumber >= 1 &&
       winningNumber <= 18;
@@ -1667,10 +1440,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'high'
-  ) {
+  else if (ticket.betType === 'high') {
     won =
       winningNumber >= 19 &&
       winningNumber <= 36;
@@ -1682,10 +1452,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'dozen1'
-  ) {
+  else if (ticket.betType === 'dozen1') {
     won =
       winningNumber >= 1 &&
       winningNumber <= 12;
@@ -1697,10 +1464,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'dozen2'
-  ) {
+  else if (ticket.betType === 'dozen2') {
     won =
       winningNumber >= 13 &&
       winningNumber <= 24;
@@ -1712,10 +1476,7 @@ async function settleTicket(
         : 0;
   }
 
-  else if (
-    ticket.betType ===
-    'dozen3'
-  ) {
+  else if (ticket.betType === 'dozen3') {
     won =
       winningNumber >= 25 &&
       winningNumber <= 36;
@@ -1750,9 +1511,7 @@ async function settleTicket(
         ]
       );
 
-    if (
-      result.rowCount !== 1
-    ) {
+    if (result.rowCount !== 1) {
       const already =
         await getTicket(
           round,
@@ -1814,56 +1573,200 @@ app.post(
   '/api/admin/set-next-number',
   requireAdmin,
   function (req, res) {
-    const raw =
-      req.body.number;
+    try {
+      const raw =
+        req.body.number;
 
-    if (
-      raw === null ||
-      raw === undefined ||
-      raw === ''
-    ) {
-      forcedNextNumber.enabled =
-        false;
+      /*
+        Random ለማድረግ
+      */
+      if (
+        raw === null ||
+        raw === undefined ||
+        raw === ''
+      ) {
+        forcedNextNumber.enabled = false;
+        forcedNextNumber.value = null;
+        forcedNextNumber.round = null;
 
-      forcedNextNumber.value =
-        null;
+        return res.json({
+          success: true,
+
+          number: null,
+
+          round: null,
+
+          message:
+            'ቀጥሎ የሚወጣው ቁጥር Random ሆኗል'
+        });
+      }
+
+      const number =
+        Number(raw);
+
+      if (
+        !Number.isInteger(number) ||
+        number < 0 ||
+        number > 36
+      ) {
+        return res.status(400).json({
+          error:
+            'ልክ ያልሆነ ቁጥር። 0-36 መሆን አለበት'
+        });
+      }
+
+      const round =
+        currentRoundId();
+
+      /*
+        Current round ከbetting ጊዜ ውጭ ከሆነ
+        next round ላይ እንዲሰራ እንዘጋጀዋለን።
+      */
+      const targetRound =
+        isBettingOpen(round)
+          ? round
+          : round + 1;
+
+      forcedNextNumber.enabled = true;
+      forcedNextNumber.value = number;
+      forcedNextNumber.round = targetRound;
 
       return res.json({
         success: true,
-        message:
-          'ቀጥሎ የሚወጣው ቁጥር Random ሆኗል'
-      });
-    }
 
-    const number =
-      Number(raw);
-
-    if (
-      Number.isInteger(number) &&
-      number >= 0 &&
-      number <= 36
-    ) {
-      forcedNextNumber.enabled =
-        true;
-
-      forcedNextNumber.value =
-        number;
-
-      return res.json({
-        success: true,
         number,
+
+        round: targetRound,
 
         message:
           'ቀጥሎ የሚወጣው ቁጥር ' +
           number +
           ' ተዘጋጅቷል'
       });
-    }
+    } catch (err) {
+      console.error(
+        'set-next-number error:',
+        err
+      );
 
-    return res.status(400).json({
-      error:
-        'ልክ ያልሆነ ቁጥር። 0-36 መሆን አለበት'
-    });
+      return res.status(500).json({
+        error:
+          'failed to set next number'
+      });
+    }
+  }
+);
+
+/* =========================================================
+   ADMIN: CURRENT ROUND INFO
+========================================================= */
+
+app.get(
+  '/api/admin/current-round',
+  requireAdmin,
+  async function (req, res) {
+    try {
+      const round =
+        currentRoundId();
+
+      const timing =
+        getRoundTiming(round);
+
+      const nowUnix =
+        Math.floor(Date.now() / 1000);
+
+      let existingResult = null;
+
+      if (pool) {
+        const result =
+          await pool.query(
+            `
+            SELECT
+              winning_number,
+              winning_color
+            FROM rounds
+            WHERE round_id = $1
+            `,
+            [round]
+          );
+
+        if (result.rows.length > 0) {
+          existingResult = {
+            winning_number:
+              Number(
+                result.rows[0]
+                  .winning_number
+              ),
+
+            winning_color:
+              result.rows[0]
+                .winning_color
+          };
+        }
+      } else if (memRounds[round]) {
+        existingResult =
+          memRounds[round];
+      }
+
+      res.json({
+        success: true,
+
+        round,
+
+        start_unix:
+          timing.startUnix,
+
+        bet_close_unix:
+          timing.betCloseUnix,
+
+        round_end_unix:
+          timing.roundEndUnix,
+
+        betting_open:
+          isBettingOpen(round),
+
+        finished:
+          isRoundFinished(round),
+
+        seconds_to_bet_close:
+          Math.max(
+            0,
+            timing.betCloseUnix -
+              nowUnix
+          ),
+
+        seconds_to_round_end:
+          Math.max(
+            0,
+            timing.roundEndUnix -
+              nowUnix
+          ),
+
+        forced_number:
+          forcedNextNumber.enabled &&
+          Number(forcedNextNumber.round) === round
+            ? Number(forcedNextNumber.value)
+            : null,
+
+        forced_round:
+          forcedNextNumber.enabled
+            ? Number(forcedNextNumber.round)
+            : null,
+
+        result:
+          existingResult
+      });
+    } catch (err) {
+      console.error(
+        'admin/current-round error:',
+        err
+      );
+
+      res.status(500).json({
+        error:
+          'failed to load current round'
+      });
+    }
   }
 );
 
@@ -1884,15 +1787,10 @@ app.get(
 
       const totalUserBalance =
         balances.reduce(
-          function (
-            sum,
-            user
-          ) {
+          function (sum, user) {
             return (
               sum +
-              Number(
-                user.balance
-              )
+              Number(user.balance)
             );
           },
           0
@@ -1953,9 +1851,7 @@ app.get(
         balances.map(
           function (user) {
             const seen =
-              lastSeen[
-                user.userId
-              ];
+              lastSeen[user.userId];
 
             return {
               userId:
@@ -1967,15 +1863,12 @@ app.get(
                   : null,
 
               balance:
-                Number(
-                  user.balance
-                ),
+                Number(user.balance),
 
               online:
                 !!(
                   seen &&
-                  seen.ts >=
-                    cutoff
+                  seen.ts >= cutoff
                 )
             };
           }
@@ -2007,16 +1900,11 @@ app.get(
   requireAdmin,
   async function (req, res) {
     const requested =
-      Number(
-        req.query.limit
-      ) || 50;
+      Number(req.query.limit) || 50;
 
     const limit =
       Math.min(
-        Math.max(
-          requested,
-          1
-        ),
+        Math.max(requested, 1),
         ACTIVITY_LOG_MAX
       );
 
@@ -2040,34 +1928,55 @@ app.get(
   async function (req, res) {
     try {
       const requestedRound =
-        Number(
-          req.query.round
-        );
+        Number(req.query.round);
 
       const round =
-        Number.isInteger(
-          requestedRound
-        )
+        Number.isInteger(requestedRound)
           ? requestedRound
           : currentRoundId();
 
+      /*
+        IMPORTANT:
+        Current round betting ገና ካልተዘጋ
+        Admin result እንዲፈጠር አንፈቅድም።
+      */
+      if (
+        round === currentRoundId() &&
+        !isRoundFinished(round)
+      ) {
+        return res.status(425).json({
+          error:
+            'round not finished yet',
+
+          round,
+
+          bet_close_unix:
+            getRoundTiming(round)
+              .betCloseUnix
+        });
+      }
+
       const result =
-        await resolveRound(
-          round
-        );
+        await resolveRound(round);
 
       res.json({
+        success: true,
+
         round,
 
         winning_number:
-          result.winning_number,
+          Number(
+            result.winning_number
+          ),
 
         winning_color:
           result.winning_color,
 
         is_current_round:
-          round ===
-          currentRoundId()
+          round === currentRoundId(),
+
+        finished:
+          isRoundFinished(round)
       });
     } catch (err) {
       console.error(
@@ -2077,6 +1986,7 @@ app.get(
 
       res.status(500).json({
         error:
+          err.message ||
           'failed to resolve round'
       });
     }
@@ -2097,7 +2007,7 @@ app.get(
 );
 
 /* =========================================================
-   BALANCE (via Telegram Mini App initData)
+   BALANCE VIA TELEGRAM MINI APP INIT DATA
 ========================================================= */
 
 app.get(
@@ -2108,9 +2018,7 @@ app.get(
         req.query.initData || '';
 
       const user =
-        validateInitData(
-          initData
-        );
+        validateInitData(initData);
 
       if (!user) {
         return res.status(401).json({
@@ -2125,11 +2033,9 @@ app.get(
       );
 
       const balance =
-        await getBalance(
-          user.id
-        );
+        await getBalance(user.id);
 
-      res.json({
+      return res.json({
         success: true,
 
         user_id:
@@ -2144,7 +2050,7 @@ app.get(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to load balance'
       });
@@ -2153,7 +2059,7 @@ app.get(
 );
 
 /* =========================================================
-   BALANCE (by userId — used by the Telegram bot)
+   BALANCE BY USER ID
 ========================================================= */
 
 app.get(
@@ -2166,12 +2072,16 @@ app.get(
       const balance =
         await getBalance(userId);
 
-      touch(userId, null);
+      touch(
+        userId,
+        null
+      );
 
-      res.json({
+      return res.json({
         success: true,
 
-        user_id: userId,
+        user_id:
+          userId,
 
         balance:
           Number(balance)
@@ -2182,7 +2092,7 @@ app.get(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to load balance'
       });
@@ -2202,9 +2112,7 @@ app.post(
         req.body.initData;
 
       const round =
-        Number(
-          req.body.round
-        );
+        Number(req.body.round);
 
       const betType =
         req.body.betType;
@@ -2213,14 +2121,10 @@ app.post(
         req.body.numbers;
 
       const requestedStake =
-        Number(
-          req.body.stake
-        );
+        Number(req.body.stake);
 
       const user =
-        validateInitData(
-          initData
-        );
+        validateInitData(initData);
 
       if (!user) {
         return res.status(401).json({
@@ -2242,9 +2146,7 @@ app.post(
         });
       }
 
-      if (
-        !isBettingOpen(round)
-      ) {
+      if (!isBettingOpen(round)) {
         return res.status(400).json({
           error:
             'betting time is closed'
@@ -2265,9 +2167,7 @@ app.post(
       ];
 
       if (
-        VALID_TYPES.indexOf(
-          betType
-        ) === -1
+        VALID_TYPES.indexOf(betType) === -1
       ) {
         return res.status(400).json({
           error:
@@ -2276,12 +2176,8 @@ app.post(
       }
 
       if (
-        !Number.isFinite(
-          requestedStake
-        ) ||
-        STAKE_OPTIONS.indexOf(
-          requestedStake
-        ) === -1
+        !Number.isFinite(requestedStake) ||
+        STAKE_OPTIONS.indexOf(requestedStake) === -1
       ) {
         return res.status(400).json({
           error:
@@ -2297,16 +2193,10 @@ app.post(
       let stake =
         requestedStake;
 
-      if (
-        betType ===
-        'number'
-      ) {
+      if (betType === 'number') {
         if (
-          !Array.isArray(
-            numbers
-          ) ||
-          numbers.length ===
-            0
+          !Array.isArray(numbers) ||
+          numbers.length === 0
         ) {
           return res.status(400).json({
             error:
@@ -2325,16 +2215,13 @@ app.post(
         }
 
         cleanNumbers =
-          numbers.map(
-            function (n) {
-              return Number(n);
-            }
-          );
+          numbers.map(function (n) {
+            return Number(n);
+          });
 
         for (
           let i = 0;
-          i <
-            cleanNumbers.length;
+          i < cleanNumbers.length;
           i++
         ) {
           const n =
@@ -2353,9 +2240,7 @@ app.post(
         }
 
         if (
-          new Set(
-            cleanNumbers
-          ).size !==
+          new Set(cleanNumbers).size !==
           cleanNumbers.length
         ) {
           return res.status(400).json({
@@ -2369,6 +2254,10 @@ app.post(
           requestedStake;
       }
 
+      /*
+        Ticket ID በአንድ round/user
+        አንድ ብቻ ነው።
+      */
       const ticketId =
         String(round) +
         '-' +
@@ -2388,8 +2277,7 @@ app.post(
       }
 
       const payoutStake =
-        betType ===
-        'number'
+        betType === 'number'
           ? perNumberStake
           : stake;
 
@@ -2417,10 +2305,9 @@ app.post(
         return res.status(400).json({
           error:
             'insufficient balance',
+
           balance:
-            Number(
-              deduction.balance
-            )
+            Number(deduction.balance)
         });
       }
 
@@ -2448,9 +2335,7 @@ app.post(
           Number(stake),
 
         perNumberStake:
-          Number(
-            perNumberStake
-          ),
+          Number(perNumberStake),
 
         settled:
           false,
@@ -2467,9 +2352,7 @@ app.post(
 
       try {
         const created =
-          await createTicket(
-            ticket
-          );
+          await createTicket(ticket);
 
         if (!created) {
           await changeBalance(
@@ -2489,9 +2372,7 @@ app.post(
               'በዚህ ዙር ቀድሞውኑ ትኬት ቆርጠዋል'
           });
         }
-      } catch (
-        ticketError
-      ) {
+      } catch (ticketError) {
         await changeBalance(
           user.id,
           stake
@@ -2520,8 +2401,7 @@ app.post(
           user.id,
 
         name:
-          user.first_name ||
-          null,
+          user.first_name || null,
 
         betType,
 
@@ -2531,10 +2411,12 @@ app.post(
         stake:
           Number(stake),
 
-        round
+        round,
+
+        ticketId
       });
 
-      res.json({
+      return res.json({
         success: true,
 
         ticket_id:
@@ -2542,10 +2424,17 @@ app.post(
 
         round,
 
+        bet_type:
+          betType,
+
+        numbers:
+          cleanNumbers,
+
+        stake:
+          Number(stake),
+
         balance:
-          Number(
-            deduction.balance
-          )
+          Number(deduction.balance)
       });
     } catch (err) {
       console.error(
@@ -2553,7 +2442,7 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to place ticket'
       });
@@ -2573,25 +2462,15 @@ app.get(
         req.query.initData || '';
 
       const round =
-        Number(
-          req.query.round
-        );
+        Number(req.query.round);
 
-      /*
-        ticket_id ካልተላከ ባዶ string ይሆናል።
-        Ticket የሌለው user እንኳን
-        round result ማየት ይችላል።
-      */
       const ticketId =
         String(
-          req.query.ticket_id ||
-            ''
+          req.query.ticket_id || ''
         ).trim();
 
       const user =
-        validateInitData(
-          initData
-        );
+        validateInitData(initData);
 
       if (!user) {
         return res.status(401).json({
@@ -2605,9 +2484,7 @@ app.get(
         user.first_name
       );
 
-      if (
-        !Number.isInteger(round)
-      ) {
+      if (!Number.isInteger(round)) {
         return res.status(400).json({
           error:
             'invalid round'
@@ -2615,45 +2492,38 @@ app.get(
       }
 
       const timing =
-        getRoundTiming(
-          round
-        );
+        getRoundTiming(round);
 
       const nowUnix =
-        Math.floor(
-          Date.now() / 1000
-        );
+        Math.floor(Date.now() / 1000);
 
       /*
-        Result የሚታየው BET_LENGTH
-        ከተጠናቀቀ በኋላ ነው።
+        Result 40 seconds ከተሟላ በኋላ ብቻ
+        ይፈቀዳል።
       */
-
       if (
         nowUnix <
         timing.betCloseUnix
       ) {
         return res.status(425).json({
           error:
-            'round not finished yet'
+            'round not finished yet',
+
+          round,
+
+          bet_close_unix:
+            timing.betCloseUnix,
+
+          seconds_remaining:
+            timing.betCloseUnix -
+            nowUnix
         });
       }
 
       /*
-        =====================================================
-        IMPORTANT FIX
-        =====================================================
-
-        ticket_id ካለ ብቻ እንመረምራለን።
-
-        ticket_id ካልተላከ:
-        → 403 አይሰጥም
-        → round result ያያል
-
-        ticket_id ከተላከ:
-        → የዚህ user ticket መሆኑን እናረጋግጣለን
+        Ticket ID ከተላከ
+        የuser ትክክለኛ ticket ID መሆን አለበት።
       */
-
       const expectedTicketId =
         String(round) +
         '-' +
@@ -2661,8 +2531,7 @@ app.get(
 
       if (
         ticketId &&
-        ticketId !==
-          expectedTicketId
+        ticketId !== expectedTicketId
       ) {
         return res.status(403).json({
           error:
@@ -2671,14 +2540,8 @@ app.get(
       }
 
       /*
-        User በዚህ round ticket
-        እንዳለው እንፈልጋለን።
-
-        ከሌለ:
-        → result ብቻ
-        → payout የለም
+        User ticket ካለ እንፈልጋለን።
       */
-
       const ticket =
         await getTicket(
           round,
@@ -2693,14 +2556,10 @@ app.get(
 
       if (!ticket) {
         const resolved =
-          await resolveRound(
-            round
-          );
+          await resolveRound(round);
 
         const balance =
-          await getBalance(
-            user.id
-          );
+          await getBalance(user.id);
 
         return res.json({
           success: true,
@@ -2722,7 +2581,10 @@ app.get(
             0,
 
           balance:
-            Number(balance)
+            Number(balance),
+
+          ticket_id:
+            null
         });
       }
 
@@ -2733,14 +2595,7 @@ app.get(
       */
 
       const resolved =
-        await resolveRound(
-          round
-        );
-
-      /*
-        Ticket ካለ settlement
-        እና payout እዚህ ይሰራል።
-      */
+        await resolveRound(round);
 
       const settlement =
         await settleTicket(
@@ -2750,13 +2605,7 @@ app.get(
         );
 
       const balance =
-        await getBalance(
-          user.id
-        );
-
-      /*
-        Activity log
-      */
+        await getBalance(user.id);
 
       if (
         settlement.exists &&
@@ -2770,11 +2619,13 @@ app.get(
             user.id,
 
           name:
-            user.first_name ||
-            null,
+            user.first_name || null,
 
           betType:
             ticket.betType,
+
+          numbers:
+            ticket.numbers,
 
           stake:
             ticket.stake,
@@ -2788,18 +2639,20 @@ app.get(
           winningNumber:
             resolved.winning_number,
 
-          round
+          round,
+
+          ticketId:
+            ticket.ticketId
         });
       }
-
-      /*
-        Final response
-      */
 
       return res.json({
         success: true,
 
         round,
+
+        ticket_id:
+          ticket.ticketId,
 
         winning_number:
           Number(
@@ -2820,7 +2673,6 @@ app.get(
         balance:
           Number(balance)
       });
-
     } catch (err) {
       console.error(
         'round-result error:',
@@ -2829,6 +2681,7 @@ app.get(
 
       return res.status(500).json({
         error:
+          err.message ||
           'failed to load round result'
       });
     }
@@ -2847,14 +2700,10 @@ app.post(
         req.body.initData;
 
       const amount =
-        Number(
-          req.body.amount
-        );
+        Number(req.body.amount);
 
       const user =
-        validateInitData(
-          initData
-        );
+        validateInitData(initData);
 
       if (!user) {
         return res.status(401).json({
@@ -2893,13 +2742,14 @@ app.post(
           user.id,
 
         name:
-          user.first_name ||
-          null,
+          user.first_name || null,
 
-        amount
+        amount,
+
+        orderId
       });
 
-      res.json({
+      return res.json({
         success: true,
 
         orderId,
@@ -2912,7 +2762,7 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to create deposit request'
       });
@@ -2931,20 +2781,16 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId ||
-            ''
+          req.body.orderId || ''
         );
 
       const adminId =
         String(
-          req.body.adminId ||
-            'admin'
+          req.body.adminId || 'admin'
         );
 
       const order =
-        await getOrder(
-          orderId
-        );
+        await getOrder(orderId);
 
       if (!order) {
         return res.status(404).json({
@@ -2953,20 +2799,14 @@ app.post(
         });
       }
 
-      if (
-        order.type !==
-        'deposit'
-      ) {
+      if (order.type !== 'deposit') {
         return res.status(400).json({
           error:
             'Invalid order type'
         });
       }
 
-      if (
-        order.status !==
-        'pending'
-      ) {
+      if (order.status !== 'pending') {
         return res.status(409).json({
           error:
             'Already handled'
@@ -3013,7 +2853,7 @@ app.post(
         adminId
       });
 
-      res.json({
+      return res.json({
         success: true,
 
         userId:
@@ -3028,7 +2868,7 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to confirm deposit'
       });
@@ -3047,20 +2887,16 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId ||
-            ''
+          req.body.orderId || ''
         );
 
       const adminId =
         String(
-          req.body.adminId ||
-            'admin'
+          req.body.adminId || 'admin'
         );
 
       const order =
-        await getOrder(
-          orderId
-        );
+        await getOrder(orderId);
 
       if (!order) {
         return res.status(404).json({
@@ -3069,20 +2905,14 @@ app.post(
         });
       }
 
-      if (
-        order.type !==
-        'deposit'
-      ) {
+      if (order.type !== 'deposit') {
         return res.status(400).json({
           error:
             'Invalid order type'
         });
       }
 
-      if (
-        order.status !==
-        'pending'
-      ) {
+      if (order.status !== 'pending') {
         return res.status(409).json({
           error:
             'Already handled'
@@ -3118,7 +2948,7 @@ app.post(
         adminId
       });
 
-      res.json({
+      return res.json({
         success: true,
 
         userId:
@@ -3130,7 +2960,7 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to reject deposit'
       });
@@ -3150,17 +2980,13 @@ app.post(
         req.body.initData;
 
       const amount =
-        Number(
-          req.body.amount
-        );
+        Number(req.body.amount);
 
       const phone =
         req.body.phone;
 
       const user =
-        validateInitData(
-          initData
-        );
+        validateInitData(initData);
 
       if (!user) {
         return res.status(401).json({
@@ -3181,8 +3007,7 @@ app.post(
 
       if (
         !phone ||
-        typeof phone !==
-          'string' ||
+        typeof phone !== 'string' ||
         !phone.trim()
       ) {
         return res.status(400).json({
@@ -3203,9 +3028,7 @@ app.post(
             'insufficient balance',
 
           balance:
-            Number(
-              deduction.balance
-            )
+            Number(deduction.balance)
         });
       }
 
@@ -3234,8 +3057,7 @@ app.post(
             user.id,
 
           name:
-            user.first_name ||
-            null,
+            user.first_name || null,
 
           amount,
 
@@ -3245,19 +3067,15 @@ app.post(
           orderId
         });
 
-        res.json({
+        return res.json({
           success: true,
 
           orderId,
 
           balance:
-            Number(
-              deduction.balance
-            )
+            Number(deduction.balance)
         });
-      } catch (
-        orderError
-      ) {
+      } catch (orderError) {
         await changeBalance(
           user.id,
           amount
@@ -3271,7 +3089,7 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to create withdrawal request'
       });
@@ -3290,20 +3108,16 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId ||
-            ''
+          req.body.orderId || ''
         );
 
       const adminId =
         String(
-          req.body.adminId ||
-            'admin'
+          req.body.adminId || 'admin'
         );
 
       const order =
-        await getOrder(
-          orderId
-        );
+        await getOrder(orderId);
 
       if (!order) {
         return res.status(404).json({
@@ -3312,20 +3126,14 @@ app.post(
         });
       }
 
-      if (
-        order.type !==
-        'withdraw'
-      ) {
+      if (order.type !== 'withdraw') {
         return res.status(400).json({
           error:
             'Invalid order type'
         });
       }
 
-      if (
-        order.status !==
-        'pending'
-      ) {
+      if (order.status !== 'pending') {
         return res.status(409).json({
           error:
             'Already handled'
@@ -3366,7 +3174,7 @@ app.post(
         adminId
       });
 
-      res.json({
+      return res.json({
         success: true,
 
         userId:
@@ -3381,7 +3189,7 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to confirm withdrawal'
       });
@@ -3400,20 +3208,16 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId ||
-            ''
+          req.body.orderId || ''
         );
 
       const adminId =
         String(
-          req.body.adminId ||
-            'admin'
+          req.body.adminId || 'admin'
         );
 
       const order =
-        await getOrder(
-          orderId
-        );
+        await getOrder(orderId);
 
       if (!order) {
         return res.status(404).json({
@@ -3422,20 +3226,14 @@ app.post(
         });
       }
 
-      if (
-        order.type !==
-        'withdraw'
-      ) {
+      if (order.type !== 'withdraw') {
         return res.status(400).json({
           error:
             'Invalid order type'
         });
       }
 
-      if (
-        order.status !==
-        'pending'
-      ) {
+      if (order.status !== 'pending') {
         return res.status(409).json({
           error:
             'Already handled'
@@ -3482,16 +3280,14 @@ app.post(
         adminId
       });
 
-      res.json({
+      return res.json({
         success: true,
 
         userId:
           order.userId,
 
         balance:
-          Number(
-            restoredBalance
-          )
+          Number(restoredBalance)
       });
     } catch (err) {
       console.error(
@@ -3499,11 +3295,30 @@ app.post(
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to reject withdrawal'
       });
     }
+  }
+);
+
+/* =========================================================
+   HEALTH CHECK
+========================================================= */
+
+app.get(
+  '/api/health',
+  function (req, res) {
+    res.json({
+      success: true,
+      server: 'online',
+      round: currentRoundId(),
+      round_length: ROUND_LENGTH,
+      bet_length: BET_LENGTH,
+      database:
+        pool ? 'postgresql' : 'memory'
+    });
   }
 );
 
@@ -3516,6 +3331,14 @@ initDb()
     app.listen(
       PORT,
       function () {
+        console.log(
+          '========================================'
+        );
+
+        console.log(
+          'Spin & Win Server Started'
+        );
+
         console.log(
           'Server listening on port ' +
           PORT
@@ -3531,6 +3354,17 @@ initDb()
           'BET_LENGTH = ' +
           BET_LENGTH +
           ' seconds'
+        );
+
+        console.log(
+          'Database = ' +
+          (pool
+            ? 'PostgreSQL'
+            : 'In-Memory')
+        );
+
+        console.log(
+          '========================================'
         );
       }
     );
