@@ -274,6 +274,16 @@ app.get('/api/admin/activity', requireAdmin, async function (req, res) {
     const limit = Math.min(Number(req.query.limit) || 50, ACTIVITY_LOG_MAX);
     res.json({ activity: activityLog.slice(0, limit) });
 });
+
+// ✅ አዲስ፦ አድሚን ማንኛውንም ዙር (የአሁኑን ወይም ያለፈውን) ውጤት አስቀድሞ/በኋላ ማየት
+// የሚችልበት endpoint። ተራ ተጫዋቾች ይህን ማግኘት አይችሉም (ADMIN_SECRET ያስፈልጋል)።
+// ማስታወሻ፦ ይህ ውጤቱን አይቀይረውም/እንደገና አይመርጥም — ቀድሞ ካልተመረጠ ይመርጣል፣
+// ቀድሞ ከተመረጠ ያንኑ ነባር ውጤት ብቻ ይመልሳል (ፍትሃዊነቱ አይነካም)።
+app.get('/api/admin/round-result', requireAdmin, function (req, res) {
+    const round = parseInt(req.query.round, 10) || currentRoundId();
+    const result = resolveRound(round);
+    res.json({ round: round, winning_number: result.winning_number, winning_color: result.winning_color, is_current_round: round === currentRoundId() });
+});
 // ---------------------------------------------------------------------------
 
 function sortEntries(entries) {
@@ -324,6 +334,18 @@ function parseUnsafe(initData) {
 const roundTickets = {};
 const resolvedRounds = {};
 function currentRoundId() { return Math.floor(Date.now() / 1000 / ROUND_LENGTH); }
+
+// ✅ ተስተካክሏል፦ ይህ function ብቻ ውጤት (winning number) ይመርጣል/ያመነጫል፣
+// ካልተመረጠ። ራሱ ችግር የለውም — ችግር የነበረው ይህ ገና ዙሩ ሳያልቅ ለ /api/round-result
+// (ማንኛውም ተጫዋች ሊጠራው ለሚችለው endpoint) ክፍት ሆኖ መጠራቱ ነበር።
+function resolveRound(round) {
+    if (!resolvedRounds[round]) {
+        const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
+        resolvedRounds[round] = { winning_number: winningNumber, winning_color: colorFor(winningNumber) };
+        cleanupOldLiability(round);
+    }
+    return resolvedRounds[round];
+}
 
 // ---------------------------------------------------------------------------
 // Live monitoring: who's online right now, and a rolling feed of recent bets
@@ -446,13 +468,19 @@ app.get('/api/round-result', async function (req, res) {
     const ticketId = req.query.ticket_id;
     const user = validateInitData(initData);
     if (!user) return res.status(401).json({ error: 'invalid initData' });
-    if (!resolvedRounds[round]) {
-        const winningNumber = WHEEL_ORDER[Math.floor(Math.random() * WHEEL_ORDER.length)];
-        resolvedRounds[round] = { winning_number: winningNumber, winning_color: colorFor(winningNumber) };
-        cleanupOldLiability(round);
+
+    // ✅ ደህንነት ማስተካከያ፦ ዙሩ (round) ገና ካላለቀ (currentRoundId() ካልበለጠው)
+    // ውጤቱ ፈጽሞ አይመነጭም/አይገለጽም። ከዚህ በፊት ይህ ገደብ ስላልነበረ፣ ማንም ተጫዋች
+    // ውርርድ ሳያደርግ ብቻ ይህን endpoint በመጥራት ውጤቱን አስቀድሞ አውቆ ትክክለኛውን
+    // ቁጥር ላይ ውርርድ ማድረግ ይችል ነበር። አሁን ዙሩ በትክክል እስኪያልቅ ድረስ
+      // "round not finished" ተብሎ ይመለሳል።
+    if (round >= currentRoundId()) {
+        return res.status(425).json({ error: 'round not finished yet' });
     }
-    const winning_number = resolvedRounds[round].winning_number;
-    const winning_color = resolvedRounds[round].winning_color;
+
+    const resolved = resolveRound(round);
+    const winning_number = resolved.winning_number;
+    const winning_color = resolved.winning_color;
     let won = false;
     let amount = 0;
     const ticket = roundTickets[round] && roundTickets[round][user.id];
