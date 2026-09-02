@@ -25,6 +25,7 @@ const MAX_NUMBERS = 8;
 const SPIN_PAYOUT_MULTIPLIER = 36;
 
 const ROUND_LENGTH = 50;
+const BET_LENGTH = 40; // ← ከ frontend ውስጥ ካለው BET_LENGTH ጋር በትክክል መመሳሰል አለበት
 
 const MAX_ROUND_LIABILITY =
   Number(process.env.MAX_ROUND_LIABILITY || 50000);
@@ -1053,10 +1054,6 @@ async function settleTicket(
     };
   }
 
-  /*
-    IMPORTANT:
-    If already settled, NEVER pay again.
-  */
   if (ticket.settled) {
     return {
       exists: true,
@@ -1174,11 +1171,6 @@ async function settleTicket(
   }
 
   if (pool) {
-    /*
-      Atomic settlement:
-      only the first request can change settled=false
-      to settled=true.
-    */
     const result = await pool.query(
       `
       UPDATE tickets
@@ -1221,9 +1213,6 @@ async function settleTicket(
       );
     }
   } else {
-    /*
-      In-memory mode.
-    */
     ticket.settled = true;
     ticket.won = won;
     ticket.payout = amount;
@@ -1531,11 +1520,6 @@ app.get(
   }
 );
 
-/*
-  Removed public /api/balance/:userId endpoint.
-  It exposed arbitrary users' balances.
-*/
-
 /* =========================================================
    PLACE TICKET
 ========================================================= */
@@ -1671,9 +1655,6 @@ app.post(
           }
         }
 
-        /*
-          Prevent duplicate numbers.
-        */
         if (
           new Set(cleanNumbers)
             .size !==
@@ -1695,9 +1676,6 @@ app.post(
         '-' +
         user.id;
 
-      /*
-        Check existing ticket first.
-      */
       const existing =
         await getTicket(
           round,
@@ -1711,20 +1689,11 @@ app.post(
         });
       }
 
-      /*
-        For number bets payout is per-number stake.
-        For other bets payout is the total stake.
-      */
       const payoutStake =
         betType === 'number'
           ? perNumberStake
           : stake;
 
-      /*
-        Reserve liability BEFORE awaiting balance.
-        This prevents two simultaneous requests
-        from both passing the cap.
-      */
       if (
         wouldExceedCap(
           round,
@@ -1746,9 +1715,6 @@ app.post(
         payoutStake
       );
 
-      /*
-        Deduct balance.
-      */
       const deduction =
         await deductIfSufficient(
           user.id,
@@ -1756,9 +1722,6 @@ app.post(
         );
 
       if (!deduction.ok) {
-        /*
-          Roll back liability.
-        */
         removeLiability(
           round,
           betType,
@@ -1793,11 +1756,6 @@ app.post(
           ticket
         );
       } catch (ticketError) {
-        /*
-          If ticket creation fails,
-          refund the deducted amount and
-          release liability.
-        */
         await changeBalance(
           user.id,
           stake
@@ -1889,8 +1847,27 @@ app.get(
         });
       }
 
+      /*
+        IMPORTANT:
+        A round is considered finished only
+        after its betting period has closed.
+
+        ROUND_LENGTH = 50 seconds
+        BET_LENGTH   = 40 seconds
+
+        Example:
+        round = 123
+        bet closes at:
+        123 * 50 + 40
+      */
+      const roundBetCloseUnix =
+        round * ROUND_LENGTH + BET_LENGTH;
+
+      const nowUnix =
+        Math.floor(Date.now() / 1000);
+
       if (
-        round >= currentRoundId()
+        nowUnix < roundBetCloseUnix
       ) {
         return res.status(425).json({
           error:
@@ -1919,10 +1896,6 @@ app.get(
           user.id
         );
 
-      /*
-        No ticket = user did not bet
-        in this round.
-      */
       if (!ticket) {
         const resolved =
           await resolveRound(
@@ -1965,9 +1938,6 @@ app.get(
         user.first_name
       );
 
-      /*
-        Log only a new settlement.
-      */
       if (
         settlement.exists &&
         !settlement.alreadySettled
@@ -2146,11 +2116,6 @@ app.post(
         });
       }
 
-      /*
-        Mark first.
-        If another admin tries at the same time,
-        only one gets success.
-      */
       const marked =
         await markOrder(
           orderId,
@@ -2395,10 +2360,6 @@ app.post(
             deduction.balance
         });
       } catch (orderError) {
-        /*
-          If order creation fails,
-          refund the withdrawn amount.
-        */
         await changeBalance(
           user.id,
           amount
@@ -2573,10 +2534,6 @@ app.post(
         });
       }
 
-      /*
-        Mark rejected first.
-        Only the successful marker gets the refund.
-      */
       const marked =
         await markOrder(
           orderId,
