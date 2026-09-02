@@ -25,7 +25,7 @@ const MAX_NUMBERS = 8;
 const SPIN_PAYOUT_MULTIPLIER = 36;
 
 const ROUND_LENGTH = 50;
-const BET_LENGTH = 40; // ← ከ frontend ውስጥ ካለው BET_LENGTH ጋር በትክክል መመሳሰል አለበት
+const BET_LENGTH = 40;
 
 const MAX_ROUND_LIABILITY =
   Number(process.env.MAX_ROUND_LIABILITY || 50000);
@@ -50,14 +50,22 @@ const RED_NUMBERS = new Set([
 ]);
 
 function colorFor(number) {
-  if (number === 0) return 'green';
-  return RED_NUMBERS.has(number) ? 'red' : 'black';
+  number = Number(number);
+
+  if (number === 0) {
+    return 'green';
+  }
+
+  return RED_NUMBERS.has(number)
+    ? 'red'
+    : 'black';
 }
 
 const EVEN_MONEY_MULTIPLIER = 2;
 const DOZEN_MULTIPLIER = 3;
 
-const ALL_NUMBERS = Array.from({ length: 37 }, (_, i) => i);
+const ALL_NUMBERS =
+  Array.from({ length: 37 }, (_, i) => i);
 
 /* =========================================================
    DATABASE
@@ -71,7 +79,9 @@ if (!DATABASE_URL) {
 const pool = DATABASE_URL
   ? new Pool({
       connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: {
+        rejectUnauthorized: false
+      }
     })
   : null;
 
@@ -91,7 +101,9 @@ const memRounds = {};
 ========================================================= */
 
 async function initDb() {
-  if (!pool) return;
+  if (!pool) {
+    return;
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS balances (
@@ -160,21 +172,41 @@ async function getBalance(userId) {
   }
 
   const result = await pool.query(
-    'SELECT balance FROM balances WHERE user_id = $1',
+    `
+    SELECT balance
+    FROM balances
+    WHERE user_id = $1
+    `,
     [userId]
   );
 
   if (result.rows.length === 0) {
     await pool.query(
       `
-      INSERT INTO balances (user_id, balance)
-      VALUES ($1, $2)
+      INSERT INTO balances
+        (user_id, balance)
+      VALUES
+        ($1, $2)
       ON CONFLICT (user_id) DO NOTHING
       `,
-      [userId, STARTING_BALANCE]
+      [
+        userId,
+        STARTING_BALANCE
+      ]
     );
 
-    return STARTING_BALANCE;
+    const again = await pool.query(
+      `
+      SELECT balance
+      FROM balances
+      WHERE user_id = $1
+      `,
+      [userId]
+    );
+
+    return again.rows.length
+      ? Number(again.rows[0].balance)
+      : STARTING_BALANCE;
   }
 
   return Number(result.rows[0].balance);
@@ -189,16 +221,21 @@ async function changeBalance(userId, delta) {
   }
 
   if (!pool) {
-    const current = await getBalance(userId);
-    const next = current + delta;
+    const current =
+      await getBalance(userId);
+
+    const next =
+      current + delta;
 
     if (next < 0) {
-      throw new Error('Balance cannot become negative');
+      throw new Error(
+        'Balance cannot become negative'
+      );
     }
 
     memBalances[userId] = next;
 
-    return next;
+    return Number(next);
   }
 
   await getBalance(userId);
@@ -211,29 +248,44 @@ async function changeBalance(userId, delta) {
       AND balance + $2 >= 0
     RETURNING balance
     `,
-    [userId, delta]
+    [
+      userId,
+      delta
+    ]
   );
 
   if (result.rows.length === 0) {
-    throw new Error('Balance update rejected');
+    throw new Error(
+      'Balance update rejected'
+    );
   }
 
-  return Number(result.rows[0].balance);
+  return Number(
+    result.rows[0].balance
+  );
 }
 
-async function deductIfSufficient(userId, amount) {
+async function deductIfSufficient(
+  userId,
+  amount
+) {
   userId = String(userId);
   amount = Number(amount);
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
     return {
       ok: false,
-      balance: await getBalance(userId)
+      balance:
+        await getBalance(userId)
     };
   }
 
   if (!pool) {
-    const current = await getBalance(userId);
+    const current =
+      await getBalance(userId);
 
     if (current < amount) {
       return {
@@ -242,11 +294,13 @@ async function deductIfSufficient(userId, amount) {
       };
     }
 
-    memBalances[userId] = current - amount;
+    memBalances[userId] =
+      current - amount;
 
     return {
       ok: true,
-      balance: memBalances[userId]
+      balance:
+        Number(memBalances[userId])
     };
   }
 
@@ -260,11 +314,15 @@ async function deductIfSufficient(userId, amount) {
       AND balance >= $2
     RETURNING balance
     `,
-    [userId, amount]
+    [
+      userId,
+      amount
+    ]
   );
 
   if (result.rows.length === 0) {
-    const current = await getBalance(userId);
+    const current =
+      await getBalance(userId);
 
     return {
       ok: false,
@@ -274,7 +332,8 @@ async function deductIfSufficient(userId, amount) {
 
   return {
     ok: true,
-    balance: Number(result.rows[0].balance)
+    balance:
+      Number(result.rows[0].balance)
   };
 }
 
@@ -282,26 +341,39 @@ async function deductIfSufficient(userId, amount) {
    ORDERS
 ========================================================= */
 
-async function createOrder(type, userId, amount, extra) {
+async function createOrder(
+  type,
+  userId,
+  amount,
+  extra
+) {
   extra = extra || {};
 
   userId = String(userId);
   amount = Number(amount);
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('Invalid order amount');
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new Error(
+      'Invalid order amount'
+    );
   }
 
   if (!pool) {
-    const orderId = String(memOrders.nextId++);
+    const orderId =
+      String(memOrders.nextId++);
 
     memOrders.orders[orderId] = {
       type,
       userId,
       amount,
       status: 'pending',
-      createdAt: new Date().toISOString(),
-      phone: extra.phone || null
+      createdAt:
+        new Date().toISOString(),
+      phone:
+        extra.phone || null
     };
 
     return orderId;
@@ -310,7 +382,12 @@ async function createOrder(type, userId, amount, extra) {
   const result = await pool.query(
     `
     INSERT INTO orders
-      (type, user_id, amount, phone)
+      (
+        type,
+        user_id,
+        amount,
+        phone
+      )
     VALUES
       ($1, $2, $3, $4)
     RETURNING order_id
@@ -323,14 +400,19 @@ async function createOrder(type, userId, amount, extra) {
     ]
   );
 
-  return String(result.rows[0].order_id);
+  return String(
+    result.rows[0].order_id
+  );
 }
 
 async function getOrder(orderId) {
   orderId = String(orderId);
 
   if (!pool) {
-    return memOrders.orders[orderId] || null;
+    return (
+      memOrders.orders[orderId] ||
+      null
+    );
   }
 
   const result = await pool.query(
@@ -349,23 +431,37 @@ async function getOrder(orderId) {
   const row = result.rows[0];
 
   return {
-    orderId: String(row.order_id),
-    type: row.type,
-    userId: row.user_id,
-    amount: Number(row.amount),
-    status: row.status,
-    phone: row.phone,
-    confirmedBy: row.confirmed_by,
-    rejectedBy: row.rejected_by
+    orderId:
+      String(row.order_id),
+    type:
+      row.type,
+    userId:
+      row.user_id,
+    amount:
+      Number(row.amount),
+    status:
+      row.status,
+    phone:
+      row.phone,
+    confirmedBy:
+      row.confirmed_by,
+    rejectedBy:
+      row.rejected_by
   };
 }
 
-async function markOrder(orderId, status, adminId) {
+async function markOrder(
+  orderId,
+  status,
+  adminId
+) {
   orderId = String(orderId);
-  adminId = String(adminId || 'admin');
+  adminId =
+    String(adminId || 'admin');
 
   if (!pool) {
-    const order = memOrders.orders[orderId];
+    const order =
+      memOrders.orders[orderId];
 
     if (!order) {
       return false;
@@ -394,8 +490,9 @@ async function markOrder(orderId, status, adminId) {
   const result = await pool.query(
     `
     UPDATE orders
-    SET status = $2,
-        ${col} = $3
+    SET
+      status = $2,
+      ${col} = $3
     WHERE order_id = $1
       AND status = 'pending'
     `,
@@ -415,28 +512,37 @@ async function markOrder(orderId, status, adminId) {
 
 async function getAllBalances() {
   if (!pool) {
-    return Object.keys(memBalances).map(function (userId) {
+    return Object.keys(
+      memBalances
+    ).map(function (userId) {
       return {
         userId,
-        balance: Number(memBalances[userId])
+        balance:
+          Number(memBalances[userId])
       };
     });
   }
 
   const result = await pool.query(
     `
-    SELECT user_id, balance
+    SELECT
+      user_id,
+      balance
     FROM balances
     ORDER BY user_id
     `
   );
 
-  return result.rows.map(function (row) {
-    return {
-      userId: row.user_id,
-      balance: Number(row.balance)
-    };
-  });
+  return result.rows.map(
+    function (row) {
+      return {
+        userId:
+          row.user_id,
+        balance:
+          Number(row.balance)
+      };
+    }
+  );
 }
 
 async function getConfirmedTotals() {
@@ -444,19 +550,37 @@ async function getConfirmedTotals() {
     let totalDeposits = 0;
     let totalWithdrawals = 0;
 
-    Object.keys(memOrders.orders).forEach(function (orderId) {
-      const order = memOrders.orders[orderId];
+    Object.keys(
+      memOrders.orders
+    ).forEach(
+      function (orderId) {
+        const order =
+          memOrders.orders[orderId];
 
-      if (order.status !== 'confirmed') return;
+        if (
+          order.status !==
+          'confirmed'
+        ) {
+          return;
+        }
 
-      if (order.type === 'deposit') {
-        totalDeposits += Number(order.amount);
+        if (
+          order.type ===
+          'deposit'
+        ) {
+          totalDeposits +=
+            Number(order.amount);
+        }
+
+        if (
+          order.type ===
+          'withdraw'
+        ) {
+          totalWithdrawals +=
+            Number(order.amount);
+        }
       }
-
-      if (order.type === 'withdraw') {
-        totalWithdrawals += Number(order.amount);
-      }
-    });
+    );
 
     return {
       totalDeposits,
@@ -464,23 +588,34 @@ async function getConfirmedTotals() {
     };
   }
 
-  const depResult = await pool.query(`
-    SELECT COALESCE(SUM(amount), 0) AS total
-    FROM orders
-    WHERE type = 'deposit'
-      AND status = 'confirmed'
-  `);
+  const depResult =
+    await pool.query(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS total
+      FROM orders
+      WHERE type = 'deposit'
+        AND status = 'confirmed'
+    `);
 
-  const wdResult = await pool.query(`
-    SELECT COALESCE(SUM(amount), 0) AS total
-    FROM orders
-    WHERE type = 'withdraw'
-      AND status = 'confirmed'
-  `);
+  const wdResult =
+    await pool.query(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS total
+      FROM orders
+      WHERE type = 'withdraw'
+        AND status = 'confirmed'
+    `);
 
   return {
-    totalDeposits: Number(depResult.rows[0].total),
-    totalWithdrawals: Number(wdResult.rows[0].total)
+    totalDeposits:
+      Number(
+        depResult.rows[0].total
+      ),
+
+    totalWithdrawals:
+      Number(
+        wdResult.rows[0].total
+      )
   };
 }
 
@@ -488,10 +623,15 @@ async function getConfirmedTotals() {
    ADMIN AUTH
 ========================================================= */
 
-function requireAdmin(req, res, next) {
+function requireAdmin(
+  req,
+  res,
+  next
+) {
   if (!ADMIN_SECRET) {
     return res.status(503).json({
-      error: 'admin access not configured'
+      error:
+        'admin access not configured'
     });
   }
 
@@ -502,19 +642,32 @@ function requireAdmin(req, res, next) {
 
   if (!provided) {
     return res.status(401).json({
-      error: 'unauthorized'
+      error:
+        'unauthorized'
     });
   }
 
-  const providedBuffer = Buffer.from(String(provided));
-  const expectedBuffer = Buffer.from(String(ADMIN_SECRET));
+  const providedBuffer =
+    Buffer.from(
+      String(provided)
+    );
+
+  const expectedBuffer =
+    Buffer.from(
+      String(ADMIN_SECRET)
+    );
 
   if (
-    providedBuffer.length !== expectedBuffer.length ||
-    !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+    providedBuffer.length !==
+      expectedBuffer.length ||
+    !crypto.timingSafeEqual(
+      providedBuffer,
+      expectedBuffer
+    )
   ) {
     return res.status(401).json({
-      error: 'unauthorized'
+      error:
+        'unauthorized'
     });
   }
 
@@ -525,8 +678,13 @@ function requireAdmin(req, res, next) {
    TELEGRAM INIT DATA
 ========================================================= */
 
-function validateInitData(initData) {
-  if (!initData || typeof initData !== 'string') {
+function validateInitData(
+  initData
+) {
+  if (
+    !initData ||
+    typeof initData !== 'string'
+  ) {
     return null;
   }
 
@@ -539,9 +697,13 @@ function validateInitData(initData) {
   }
 
   try {
-    const params = new URLSearchParams(initData);
+    const params =
+      new URLSearchParams(
+        initData
+      );
 
-    const hash = params.get('hash');
+    const hash =
+      params.get('hash');
 
     if (!hash) {
       return null;
@@ -549,79 +711,135 @@ function validateInitData(initData) {
 
     params.delete('hash');
 
-    const entries = Array.from(params.entries()).sort(
-      function (a, b) {
-        return a[0].localeCompare(b[0]);
-      }
-    );
+    const entries =
+      Array.from(
+        params.entries()
+      ).sort(
+        function (a, b) {
+          return a[0].localeCompare(
+            b[0]
+          );
+        }
+      );
 
-    const dataCheckString = entries
-      .map(function (entry) {
-        return entry[0] + '=' + entry[1];
-      })
-      .join('\n');
+    const dataCheckString =
+      entries
+        .map(function (entry) {
+          return (
+            entry[0] +
+            '=' +
+            entry[1]
+          );
+        })
+        .join('\n');
 
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(BOT_TOKEN)
-      .digest();
+    const secretKey =
+      crypto
+        .createHmac(
+          'sha256',
+          'WebAppData'
+        )
+        .update(BOT_TOKEN)
+        .digest();
 
-    const computedHash = crypto
-      .createHmac('sha256', secretKey)
-      .update(dataCheckString)
-      .digest('hex');
+    const computedHash =
+      crypto
+        .createHmac(
+          'sha256',
+          secretKey
+        )
+        .update(
+          dataCheckString
+        )
+        .digest('hex');
 
-    const hashA = Buffer.from(computedHash, 'hex');
-    const hashB = Buffer.from(hash, 'hex');
+    const hashA =
+      Buffer.from(
+        computedHash,
+        'hex'
+      );
+
+    const hashB =
+      Buffer.from(
+        hash,
+        'hex'
+      );
 
     if (
-      hashA.length !== hashB.length ||
-      !crypto.timingSafeEqual(hashA, hashB)
+      hashA.length !==
+        hashB.length ||
+      !crypto.timingSafeEqual(
+        hashA,
+        hashB
+      )
     ) {
       return null;
     }
 
-    const userJson = params.get('user');
+    const userJson =
+      params.get('user');
 
     if (!userJson) {
       return null;
     }
 
-    const user = JSON.parse(userJson);
+    const user =
+      JSON.parse(userJson);
 
-    if (!user || !user.id) {
+    if (
+      !user ||
+      !user.id
+    ) {
       return null;
     }
 
     return {
-      id: String(user.id),
-      first_name: user.first_name || ''
+      id:
+        String(user.id),
+      first_name:
+        user.first_name || ''
     };
   } catch (err) {
-    console.error('initData validation error:', err);
+    console.error(
+      'initData validation error:',
+      err
+    );
+
     return null;
   }
 }
 
-function parseUnsafe(initData) {
+function parseUnsafe(
+  initData
+) {
   try {
-    const params = new URLSearchParams(initData);
+    const params =
+      new URLSearchParams(
+        initData
+      );
 
-    const userJson = params.get('user');
+    const userJson =
+      params.get('user');
 
     if (!userJson) {
       return null;
     }
 
-    const user = JSON.parse(userJson);
+    const user =
+      JSON.parse(userJson);
 
-    if (!user || !user.id) {
+    if (
+      !user ||
+      !user.id
+    ) {
       return null;
     }
 
     return {
-      id: String(user.id),
-      first_name: user.first_name || ''
+      id:
+        String(user.id),
+      first_name:
+        user.first_name || ''
     };
   } catch (err) {
     return null;
@@ -636,34 +854,54 @@ const lastSeen = {};
 
 const activityLog = [];
 
-function touch(userId, name) {
+function touch(
+  userId,
+  name
+) {
   lastSeen[String(userId)] = {
     ts: Date.now(),
-    name: name || null
+    name:
+      name || null
   };
 }
 
 function countOnline() {
-  const cutoff = Date.now() - ONLINE_WINDOW_MS;
+  const cutoff =
+    Date.now() -
+    ONLINE_WINDOW_MS;
 
   let count = 0;
 
-  Object.keys(lastSeen).forEach(function (userId) {
-    if (lastSeen[userId].ts >= cutoff) {
-      count++;
+  Object.keys(
+    lastSeen
+  ).forEach(
+    function (userId) {
+      if (
+        lastSeen[userId].ts >=
+        cutoff
+      ) {
+        count++;
+      }
     }
-  });
+  );
 
   return count;
 }
 
-function logActivity(entry) {
-  entry.time = new Date().toISOString();
+function logActivity(
+  entry
+) {
+  entry.time =
+    new Date().toISOString();
 
   activityLog.unshift(entry);
 
-  if (activityLog.length > ACTIVITY_LOG_MAX) {
-    activityLog.length = ACTIVITY_LOG_MAX;
+  if (
+    activityLog.length >
+    ACTIVITY_LOG_MAX
+  ) {
+    activityLog.length =
+      ACTIVITY_LOG_MAX;
   }
 }
 
@@ -680,13 +918,62 @@ const forcedNextNumber = {
 
 function currentRoundId() {
   return Math.floor(
-    Date.now() / 1000 / ROUND_LENGTH
+    Date.now() /
+      1000 /
+      ROUND_LENGTH
   );
 }
 
-function getLiabilityArray(round) {
-  if (!roundLiability[round]) {
-    roundLiability[round] = new Array(37).fill(0);
+function getRoundTiming(
+  round
+) {
+  round = Number(round);
+
+  const startUnix =
+    round * ROUND_LENGTH;
+
+  const betCloseUnix =
+    startUnix +
+    BET_LENGTH;
+
+  const roundEndUnix =
+    startUnix +
+    ROUND_LENGTH;
+
+  return {
+    startUnix,
+    betCloseUnix,
+    roundEndUnix
+  };
+}
+
+function isBettingOpen(
+  round
+) {
+  const nowUnix =
+    Math.floor(
+      Date.now() / 1000
+    );
+
+  const timing =
+    getRoundTiming(round);
+
+  return (
+    nowUnix >=
+      timing.startUnix &&
+    nowUnix <
+      timing.betCloseUnix
+  );
+}
+
+function getLiabilityArray(
+  round
+) {
+  if (
+    !roundLiability[round]
+  ) {
+    roundLiability[round] =
+      new Array(37).fill(0);
   }
 
   return roundLiability[round];
@@ -698,65 +985,130 @@ function payoutForOutcome(
   stake,
   outcome
 ) {
-  const color = colorFor(outcome);
+  const color =
+    colorFor(outcome);
 
-  if (betType === 'number') {
-    return numbers.indexOf(outcome) !== -1
-      ? stake * SPIN_PAYOUT_MULTIPLIER
+  if (
+    betType ===
+    'number'
+  ) {
+    return (
+      numbers.indexOf(outcome) !==
+      -1
+    )
+      ? stake *
+        SPIN_PAYOUT_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'red') {
+  if (
+    betType ===
+    'red'
+  ) {
     return color === 'red'
-      ? stake * EVEN_MONEY_MULTIPLIER
+      ? stake *
+        EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'black') {
+  if (
+    betType ===
+    'black'
+  ) {
     return color === 'black'
-      ? stake * EVEN_MONEY_MULTIPLIER
+      ? stake *
+        EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'odd') {
-    return outcome !== 0 && outcome % 2 === 1
-      ? stake * EVEN_MONEY_MULTIPLIER
+  if (
+    betType ===
+    'odd'
+  ) {
+    return (
+      outcome !== 0 &&
+      outcome % 2 === 1
+    )
+      ? stake *
+        EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'even') {
-    return outcome !== 0 && outcome % 2 === 0
-      ? stake * EVEN_MONEY_MULTIPLIER
+  if (
+    betType ===
+    'even'
+  ) {
+    return (
+      outcome !== 0 &&
+      outcome % 2 === 0
+    )
+      ? stake *
+        EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'low') {
-    return outcome >= 1 && outcome <= 18
-      ? stake * EVEN_MONEY_MULTIPLIER
+  if (
+    betType ===
+    'low'
+  ) {
+    return (
+      outcome >= 1 &&
+      outcome <= 18
+    )
+      ? stake *
+        EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'high') {
-    return outcome >= 19 && outcome <= 36
-      ? stake * EVEN_MONEY_MULTIPLIER
+  if (
+    betType ===
+    'high'
+  ) {
+    return (
+      outcome >= 19 &&
+      outcome <= 36
+    )
+      ? stake *
+        EVEN_MONEY_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'dozen1') {
-    return outcome >= 1 && outcome <= 12
-      ? stake * DOZEN_MULTIPLIER
+  if (
+    betType ===
+    'dozen1'
+  ) {
+    return (
+      outcome >= 1 &&
+      outcome <= 12
+    )
+      ? stake *
+        DOZEN_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'dozen2') {
-    return outcome >= 13 && outcome <= 24
-      ? stake * DOZEN_MULTIPLIER
+  if (
+    betType ===
+    'dozen2'
+  ) {
+    return (
+      outcome >= 13 &&
+      outcome <= 24
+    )
+      ? stake *
+        DOZEN_MULTIPLIER
       : 0;
   }
 
-  if (betType === 'dozen3') {
-    return outcome >= 25 && outcome <= 36
-      ? stake * DOZEN_MULTIPLIER
+  if (
+    betType ===
+    'dozen3'
+  ) {
+    return (
+      outcome >= 25 &&
+      outcome <= 36
+    )
+      ? stake *
+        DOZEN_MULTIPLIER
       : 0;
   }
 
@@ -769,20 +1121,28 @@ function wouldExceedCap(
   numbers,
   stake
 ) {
-  const liability = getLiabilityArray(round);
+  const liability =
+    getLiabilityArray(round);
 
-  for (let i = 0; i < ALL_NUMBERS.length; i++) {
-    const outcome = ALL_NUMBERS[i];
+  for (
+    let i = 0;
+    i < ALL_NUMBERS.length;
+    i++
+  ) {
+    const outcome =
+      ALL_NUMBERS[i];
 
-    const added = payoutForOutcome(
-      betType,
-      numbers,
-      stake,
-      outcome
-    );
+    const added =
+      payoutForOutcome(
+        betType,
+        numbers,
+        stake,
+        outcome
+      );
 
     if (
-      liability[outcome] + added >
+      liability[outcome] +
+        added >
       MAX_ROUND_LIABILITY
     ) {
       return true;
@@ -798,17 +1158,24 @@ function addLiability(
   numbers,
   stake
 ) {
-  const liability = getLiabilityArray(round);
+  const liability =
+    getLiabilityArray(round);
 
-  for (let i = 0; i < ALL_NUMBERS.length; i++) {
-    const outcome = ALL_NUMBERS[i];
+  for (
+    let i = 0;
+    i < ALL_NUMBERS.length;
+    i++
+  ) {
+    const outcome =
+      ALL_NUMBERS[i];
 
-    liability[outcome] += payoutForOutcome(
-      betType,
-      numbers,
-      stake,
-      outcome
-    );
+    liability[outcome] +=
+      payoutForOutcome(
+        betType,
+        numbers,
+        stake,
+        outcome
+      );
   }
 }
 
@@ -818,88 +1185,141 @@ function removeLiability(
   numbers,
   stake
 ) {
-  const liability = getLiabilityArray(round);
+  const liability =
+    getLiabilityArray(round);
 
-  for (let i = 0; i < ALL_NUMBERS.length; i++) {
-    const outcome = ALL_NUMBERS[i];
+  for (
+    let i = 0;
+    i < ALL_NUMBERS.length;
+    i++
+  ) {
+    const outcome =
+      ALL_NUMBERS[i];
 
-    liability[outcome] -= payoutForOutcome(
-      betType,
-      numbers,
-      stake,
-      outcome
-    );
+    liability[outcome] -=
+      payoutForOutcome(
+        betType,
+        numbers,
+        stake,
+        outcome
+      );
 
-    if (liability[outcome] < 0) {
+    if (
+      liability[outcome] <
+      0
+    ) {
       liability[outcome] = 0;
     }
   }
 }
 
-function cleanupOldLiability(currentRound) {
-  const cutoff = currentRound - 5;
+function cleanupOldLiability(
+  currentRound
+) {
+  const cutoff =
+    currentRound - 5;
 
-  Object.keys(roundLiability).forEach(function (key) {
-    if (Number(key) < cutoff) {
-      delete roundLiability[key];
+  Object.keys(
+    roundLiability
+  ).forEach(
+    function (key) {
+      if (
+        Number(key) <
+        cutoff
+      ) {
+        delete roundLiability[key];
+      }
     }
-  });
+  );
 }
 
 /* =========================================================
    ROUND RESOLUTION
 ========================================================= */
 
-async function resolveRound(round) {
+async function resolveRound(
+  round
+) {
   round = Number(round);
 
-  if (pool) {
-    const existing = await pool.query(
-      `
-      SELECT winning_number, winning_color
-      FROM rounds
-      WHERE round_id = $1
-      `,
-      [round]
+  if (
+    !Number.isInteger(round)
+  ) {
+    throw new Error(
+      'Invalid round'
     );
+  }
 
-    if (existing.rows.length > 0) {
+  if (pool) {
+    const existing =
+      await pool.query(
+        `
+        SELECT
+          winning_number,
+          winning_color
+        FROM rounds
+        WHERE round_id = $1
+        `,
+        [round]
+      );
+
+    if (
+      existing.rows.length >
+      0
+    ) {
       return {
-        winning_number: Number(
-          existing.rows[0].winning_number
-        ),
+        winning_number:
+          Number(
+            existing.rows[0]
+              .winning_number
+          ),
+
         winning_color:
-          existing.rows[0].winning_color
+          existing.rows[0]
+            .winning_color
       };
     }
 
     let winningNumber;
 
-    if (forcedNextNumber.enabled) {
-      winningNumber = forcedNextNumber.value;
+    if (
+      forcedNextNumber.enabled
+    ) {
+      winningNumber =
+        forcedNextNumber.value;
 
-      forcedNextNumber.enabled = false;
-      forcedNextNumber.value = null;
+      forcedNextNumber.enabled =
+        false;
+
+      forcedNextNumber.value =
+        null;
     } else {
       winningNumber =
         WHEEL_ORDER[
           Math.floor(
             Math.random() *
-            WHEEL_ORDER.length
+              WHEEL_ORDER.length
           )
         ];
     }
 
     const winningColor =
-      colorFor(winningNumber);
+      colorFor(
+        winningNumber
+      );
 
     await pool.query(
       `
       INSERT INTO rounds
-        (round_id, winning_number, winning_color)
+        (
+          round_id,
+          winning_number,
+          winning_color
+        )
       VALUES
         ($1, $2, $3)
-      ON CONFLICT (round_id) DO NOTHING
+      ON CONFLICT (round_id)
+      DO NOTHING
       `,
       [
         round,
@@ -908,52 +1328,77 @@ async function resolveRound(round) {
       ]
     );
 
-    const final = await pool.query(
-      `
-      SELECT winning_number, winning_color
-      FROM rounds
-      WHERE round_id = $1
-      `,
-      [round]
-    );
+    const final =
+      await pool.query(
+        `
+        SELECT
+          winning_number,
+          winning_color
+        FROM rounds
+        WHERE round_id = $1
+        `,
+        [round]
+      );
 
-    cleanupOldLiability(round);
+    cleanupOldLiability(
+      round
+    );
 
     return {
       winning_number:
-        Number(final.rows[0].winning_number),
+        Number(
+          final.rows[0]
+            .winning_number
+        ),
+
       winning_color:
-        final.rows[0].winning_color
+        final.rows[0]
+          .winning_color
     };
   }
 
-  if (memRounds[round]) {
+  if (
+    memRounds[round]
+  ) {
     return memRounds[round];
   }
 
   let winningNumber;
 
-  if (forcedNextNumber.enabled) {
-    winningNumber = forcedNextNumber.value;
+  if (
+    forcedNextNumber.enabled
+  ) {
+    winningNumber =
+      forcedNextNumber.value;
 
-    forcedNextNumber.enabled = false;
-    forcedNextNumber.value = null;
+    forcedNextNumber.enabled =
+      false;
+
+    forcedNextNumber.value =
+      null;
   } else {
     winningNumber =
       WHEEL_ORDER[
         Math.floor(
           Math.random() *
-          WHEEL_ORDER.length
+            WHEEL_ORDER.length
         )
       ];
   }
 
   memRounds[round] = {
-    winning_number: winningNumber,
-    winning_color: colorFor(winningNumber)
+    winning_number:
+      winningNumber,
+
+    winning_color:
+      colorFor(
+        winningNumber
+      )
   };
 
-  cleanupOldLiability(round);
+  cleanupOldLiability(
+    round
+  );
 
   return memRounds[round];
 }
@@ -962,82 +1407,147 @@ async function resolveRound(round) {
    TICKETS
 ========================================================= */
 
-async function getTicket(round, userId) {
+async function getTicket(
+  round,
+  userId
+) {
   const ticketId =
-    String(round) + '-' + String(userId);
+    String(round) +
+    '-' +
+    String(userId);
 
   if (!pool) {
-    return memTickets[ticketId] || null;
+    return (
+      memTickets[ticketId] ||
+      null
+    );
   }
 
-  const result = await pool.query(
-    `
-    SELECT *
-    FROM tickets
-    WHERE ticket_id = $1
-    `,
-    [ticketId]
-  );
+  const result =
+    await pool.query(
+      `
+      SELECT *
+      FROM tickets
+      WHERE ticket_id = $1
+      `,
+      [ticketId]
+    );
 
-  if (result.rows.length === 0) {
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
 
-  const row = result.rows[0];
+  const row =
+    result.rows[0];
 
   return {
-    ticketId: row.ticket_id,
-    round: Number(row.round_id),
-    userId: row.user_id,
-    betType: row.bet_type,
-    numbers: Array.isArray(row.numbers)
-      ? row.numbers
-      : [],
-    stake: Number(row.stake),
+    ticketId:
+      row.ticket_id,
+
+    round:
+      Number(row.round_id),
+
+    userId:
+      row.user_id,
+
+    betType:
+      row.bet_type,
+
+    numbers:
+      Array.isArray(row.numbers)
+        ? row.numbers.map(Number)
+        : [],
+
+    stake:
+      Number(row.stake),
+
     perNumberStake:
-      Number(row.per_number_stake),
-    settled: row.settled,
-    won: row.won,
-    payout: Number(row.payout || 0),
+      Number(
+        row.per_number_stake
+      ),
+
+    settled:
+      row.settled,
+
+    won:
+      row.won,
+
+    payout:
+      Number(
+        row.payout || 0
+      ),
+
     winningNumber:
       row.winning_number === null
         ? null
-        : Number(row.winning_number)
+        : Number(
+            row.winning_number
+          )
   };
 }
 
-async function createTicket(ticket) {
+async function createTicket(
+  ticket
+) {
   if (!pool) {
-    memTickets[ticket.ticketId] = ticket;
-    return;
+    if (
+      memTickets[
+        ticket.ticketId
+      ]
+    ) {
+      return false;
+    }
+
+    memTickets[
+      ticket.ticketId
+    ] = ticket;
+
+    return true;
   }
 
-  await pool.query(
-    `
-    INSERT INTO tickets
-      (
-        ticket_id,
-        round_id,
-        user_id,
-        bet_type,
-        numbers,
-        stake,
-        per_number_stake
-      )
-    VALUES
-      ($1, $2, $3, $4, $5::jsonb, $6, $7)
-    ON CONFLICT (ticket_id) DO NOTHING
-    `,
-    [
-      ticket.ticketId,
-      ticket.round,
-      ticket.userId,
-      ticket.betType,
-      JSON.stringify(ticket.numbers),
-      ticket.stake,
-      ticket.perNumberStake
-    ]
-  );
+  const result =
+    await pool.query(
+      `
+      INSERT INTO tickets
+        (
+          ticket_id,
+          round_id,
+          user_id,
+          bet_type,
+          numbers,
+          stake,
+          per_number_stake
+        )
+      VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5::jsonb,
+          $6,
+          $7
+        )
+      ON CONFLICT (ticket_id)
+      DO NOTHING
+      `,
+      [
+        ticket.ticketId,
+        ticket.round,
+        ticket.userId,
+        ticket.betType,
+        JSON.stringify(
+          ticket.numbers
+        ),
+        ticket.stake,
+        ticket.perNumberStake
+      ]
+    );
+
+  return result.rowCount === 1;
 }
 
 async function settleTicket(
@@ -1046,27 +1556,41 @@ async function settleTicket(
   winningNumber
 ) {
   const ticket =
-    await getTicket(round, userId);
+    await getTicket(
+      round,
+      userId
+    );
 
   if (!ticket) {
     return {
-      exists: false
+      exists: false,
+      alreadySettled: false,
+      won: false,
+      amount: 0
     };
   }
 
-  if (ticket.settled) {
+  if (
+    ticket.settled
+  ) {
     return {
       exists: true,
       alreadySettled: true,
       won: !!ticket.won,
-      amount: Number(ticket.payout || 0)
+      amount:
+        Number(
+          ticket.payout || 0
+        )
     };
   }
 
   let won = false;
   let amount = 0;
 
-  if (ticket.betType === 'number') {
+  if (
+    ticket.betType ===
+    'number'
+  ) {
     won =
       ticket.numbers.indexOf(
         winningNumber
@@ -1080,133 +1604,177 @@ async function settleTicket(
   }
 
   else if (
-    ticket.betType === 'red' ||
-    ticket.betType === 'black'
+    ticket.betType ===
+      'red' ||
+    ticket.betType ===
+      'black'
   ) {
     won =
-      colorFor(winningNumber) ===
+      colorFor(
+        winningNumber
+      ) ===
       ticket.betType;
 
-    amount = won
-      ? ticket.stake *
-        EVEN_MONEY_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          EVEN_MONEY_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'odd') {
+  else if (
+    ticket.betType ===
+    'odd'
+  ) {
     won =
       winningNumber !== 0 &&
       winningNumber % 2 === 1;
 
-    amount = won
-      ? ticket.stake *
-        EVEN_MONEY_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          EVEN_MONEY_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'even') {
+  else if (
+    ticket.betType ===
+    'even'
+  ) {
     won =
       winningNumber !== 0 &&
       winningNumber % 2 === 0;
 
-    amount = won
-      ? ticket.stake *
-        EVEN_MONEY_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          EVEN_MONEY_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'low') {
+  else if (
+    ticket.betType ===
+    'low'
+  ) {
     won =
       winningNumber >= 1 &&
       winningNumber <= 18;
 
-    amount = won
-      ? ticket.stake *
-        EVEN_MONEY_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          EVEN_MONEY_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'high') {
+  else if (
+    ticket.betType ===
+    'high'
+  ) {
     won =
       winningNumber >= 19 &&
       winningNumber <= 36;
 
-    amount = won
-      ? ticket.stake *
-        EVEN_MONEY_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          EVEN_MONEY_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'dozen1') {
+  else if (
+    ticket.betType ===
+    'dozen1'
+  ) {
     won =
       winningNumber >= 1 &&
       winningNumber <= 12;
 
-    amount = won
-      ? ticket.stake *
-        DOZEN_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          DOZEN_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'dozen2') {
+  else if (
+    ticket.betType ===
+    'dozen2'
+  ) {
     won =
       winningNumber >= 13 &&
       winningNumber <= 24;
 
-    amount = won
-      ? ticket.stake *
-        DOZEN_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          DOZEN_MULTIPLIER
+        : 0;
   }
 
-  else if (ticket.betType === 'dozen3') {
+  else if (
+    ticket.betType ===
+    'dozen3'
+  ) {
     won =
       winningNumber >= 25 &&
       winningNumber <= 36;
 
-    amount = won
-      ? ticket.stake *
-        DOZEN_MULTIPLIER
-      : 0;
+    amount =
+      won
+        ? ticket.stake *
+          DOZEN_MULTIPLIER
+        : 0;
   }
 
   if (pool) {
-    const result = await pool.query(
-      `
-      UPDATE tickets
-      SET
-        settled = true,
-        won = $2,
-        payout = $3,
-        winning_number = $4,
-        settled_at = now()
-      WHERE ticket_id = $1
-        AND settled = false
-      RETURNING ticket_id
-      `,
-      [
-        ticket.ticketId,
-        won,
-        amount,
-        winningNumber
-      ]
-    );
+    const result =
+      await pool.query(
+        `
+        UPDATE tickets
+        SET
+          settled = true,
+          won = $2,
+          payout = $3,
+          winning_number = $4,
+          settled_at = now()
+        WHERE ticket_id = $1
+          AND settled = false
+        RETURNING ticket_id
+        `,
+        [
+          ticket.ticketId,
+          won,
+          amount,
+          winningNumber
+        ]
+      );
 
-    if (result.rowCount !== 1) {
+    if (
+      result.rowCount !== 1
+    ) {
       const already =
-        await getTicket(round, userId);
+        await getTicket(
+          round,
+          userId
+        );
 
       return {
         exists: true,
         alreadySettled: true,
-        won: !!already.won,
-        amount: Number(
-          already.payout || 0
-        )
+        won:
+          !!already.won,
+        amount:
+          Number(
+            already.payout || 0
+          )
       };
     }
 
-    if (won && amount > 0) {
+    if (
+      won &&
+      amount > 0
+    ) {
       await changeBalance(
         userId,
         amount
@@ -1216,9 +1784,13 @@ async function settleTicket(
     ticket.settled = true;
     ticket.won = won;
     ticket.payout = amount;
-    ticket.winningNumber = winningNumber;
+    ticket.winningNumber =
+      winningNumber;
 
-    if (won && amount > 0) {
+    if (
+      won &&
+      amount > 0
+    ) {
       await changeBalance(
         userId,
         amount
@@ -1242,13 +1814,19 @@ app.post(
   '/api/admin/set-next-number',
   requireAdmin,
   function (req, res) {
-    const number = req.body.number;
+    const raw =
+      req.body.number;
 
     if (
-      number === null
+      raw === null ||
+      raw === undefined ||
+      raw === ''
     ) {
-      forcedNextNumber.enabled = false;
-      forcedNextNumber.value = null;
+      forcedNextNumber.enabled =
+        false;
+
+      forcedNextNumber.value =
+        null;
 
       return res.json({
         success: true,
@@ -1257,17 +1835,24 @@ app.post(
       });
     }
 
+    const number =
+      Number(raw);
+
     if (
-      typeof number === 'number' &&
       Number.isInteger(number) &&
       number >= 0 &&
       number <= 36
     ) {
-      forcedNextNumber.enabled = true;
-      forcedNextNumber.value = number;
+      forcedNextNumber.enabled =
+        true;
+
+      forcedNextNumber.value =
+        number;
 
       return res.json({
         success: true,
+        number,
+
         message:
           'ቀጥሎ የሚወጣው ቁጥር ' +
           number +
@@ -1299,8 +1884,16 @@ app.get(
 
       const totalUserBalance =
         balances.reduce(
-          function (sum, user) {
-            return sum + user.balance;
+          function (
+            sum,
+            user
+          ) {
+            return (
+              sum +
+              Number(
+                user.balance
+              )
+            );
           },
           0
         );
@@ -1357,29 +1950,36 @@ app.get(
         ONLINE_WINDOW_MS;
 
       const users =
-        balances.map(function (user) {
-          const seen =
-            lastSeen[user.userId];
+        balances.map(
+          function (user) {
+            const seen =
+              lastSeen[
+                user.userId
+              ];
 
-          return {
-            userId:
-              user.userId,
+            return {
+              userId:
+                user.userId,
 
-            name:
-              seen
-                ? seen.name
-                : null,
+              name:
+                seen
+                  ? seen.name
+                  : null,
 
-            balance:
-              user.balance,
+              balance:
+                Number(
+                  user.balance
+                ),
 
-            online:
-              !!(
-                seen &&
-                seen.ts >= cutoff
-              )
-          };
-        });
+              online:
+                !!(
+                  seen &&
+                  seen.ts >=
+                    cutoff
+                )
+            };
+          }
+        );
 
       res.json({
         users
@@ -1407,12 +2007,18 @@ app.get(
   requireAdmin,
   async function (req, res) {
     const requested =
-      Number(req.query.limit) || 50;
+      Number(
+        req.query.limit
+      ) || 50;
 
-    const limit = Math.min(
-      Math.max(requested, 1),
-      ACTIVITY_LOG_MAX
-    );
+    const limit =
+      Math.min(
+        Math.max(
+          requested,
+          1
+        ),
+        ACTIVITY_LOG_MAX
+      );
 
     res.json({
       activity:
@@ -1433,24 +2039,35 @@ app.get(
   requireAdmin,
   async function (req, res) {
     try {
+      const requestedRound =
+        Number(
+          req.query.round
+        );
+
       const round =
         Number.isInteger(
-          Number(req.query.round)
+          requestedRound
         )
-          ? Number(req.query.round)
+          ? requestedRound
           : currentRoundId();
 
       const result =
-        await resolveRound(round);
+        await resolveRound(
+          round
+        );
 
       res.json({
         round,
+
         winning_number:
           result.winning_number,
+
         winning_color:
           result.winning_color,
+
         is_current_round:
-          round === currentRoundId()
+          round ===
+          currentRoundId()
       });
     } catch (err) {
       console.error(
@@ -1470,11 +2087,14 @@ app.get(
    HOME
 ========================================================= */
 
-app.get('/', function (req, res) {
-  res.send(
-    'Spin and Win API server is running'
-  );
-});
+app.get(
+  '/',
+  function (req, res) {
+    res.send(
+      'Spin and Win API server is running'
+    );
+  }
+);
 
 /* =========================================================
    BALANCE
@@ -1488,7 +2108,9 @@ app.get(
         req.query.initData || '';
 
       const user =
-        validateInitData(initData);
+        validateInitData(
+          initData
+        );
 
       if (!user) {
         return res.status(401).json({
@@ -1502,9 +2124,19 @@ app.get(
         user.first_name
       );
 
+      const balance =
+        await getBalance(
+          user.id
+        );
+
       res.json({
+        success: true,
+
+        user_id:
+          String(user.id),
+
         balance:
-          await getBalance(user.id)
+          Number(balance)
       });
     } catch (err) {
       console.error(
@@ -1532,7 +2164,9 @@ app.post(
         req.body.initData;
 
       const round =
-        Number(req.body.round);
+        Number(
+          req.body.round
+        );
 
       const betType =
         req.body.betType;
@@ -1541,10 +2175,14 @@ app.post(
         req.body.numbers;
 
       const requestedStake =
-        req.body.stake;
+        Number(
+          req.body.stake
+        );
 
       const user =
-        validateInitData(initData);
+        validateInitData(
+          initData
+        );
 
       if (!user) {
         return res.status(401).json({
@@ -1563,6 +2201,27 @@ app.post(
         return res.status(400).json({
           error:
             'round closed'
+        });
+      }
+
+      /* =====================================================
+         IMPORTANT:
+         ROUND_LENGTH = 50 sec
+         BET_LENGTH   = 40 sec
+
+         Betting is accepted ONLY during:
+         second 0 → second 39
+
+         At second 40:
+         BET CLOSES.
+      ===================================================== */
+
+      if (
+        !isBettingOpen(round)
+      ) {
+        return res.status(400).json({
+          error:
+            'betting time is closed'
         });
       }
 
@@ -1591,6 +2250,9 @@ app.post(
       }
 
       if (
+        !Number.isFinite(
+          requestedStake
+        ) ||
         STAKE_OPTIONS.indexOf(
           requestedStake
         ) === -1
@@ -1609,10 +2271,16 @@ app.post(
       let stake =
         requestedStake;
 
-      if (betType === 'number') {
+      if (
+        betType ===
+        'number'
+      ) {
         if (
-          !Array.isArray(numbers) ||
-          numbers.length === 0
+          !Array.isArray(
+            numbers
+          ) ||
+          numbers.length ===
+            0
         ) {
           return res.status(400).json({
             error:
@@ -1631,13 +2299,16 @@ app.post(
         }
 
         cleanNumbers =
-          numbers.map(function (n) {
-            return Number(n);
-          });
+          numbers.map(
+            function (n) {
+              return Number(n);
+            }
+          );
 
         for (
           let i = 0;
-          i < cleanNumbers.length;
+          i <
+            cleanNumbers.length;
           i++
         ) {
           const n =
@@ -1656,8 +2327,9 @@ app.post(
         }
 
         if (
-          new Set(cleanNumbers)
-            .size !==
+          new Set(
+            cleanNumbers
+          ).size !==
           cleanNumbers.length
         ) {
           return res.status(400).json({
@@ -1672,9 +2344,9 @@ app.post(
       }
 
       const ticketId =
-        round +
+        String(round) +
         '-' +
-        user.id;
+        String(user.id);
 
       const existing =
         await getTicket(
@@ -1690,7 +2362,8 @@ app.post(
       }
 
       const payoutStake =
-        betType === 'number'
+        betType ===
+        'number'
           ? perNumberStake
           : stake;
 
@@ -1708,12 +2381,12 @@ app.post(
         });
       }
 
-      addLiability(
-        round,
-        betType,
-        cleanNumbers,
-        payoutStake
-      );
+      /*
+        IMPORTANT:
+        First deduct the user's balance.
+        If ticket creation fails,
+        the balance is returned.
+      */
 
       const deduction =
         await deductIfSufficient(
@@ -1722,40 +2395,84 @@ app.post(
         );
 
       if (!deduction.ok) {
-        removeLiability(
-          round,
-          betType,
-          cleanNumbers,
-          payoutStake
-        );
-
         return res.status(400).json({
           error:
-            'insufficient balance'
+            'insufficient balance',
+          balance:
+            Number(
+              deduction.balance
+            )
         });
       }
 
+      addLiability(
+        round,
+        betType,
+        cleanNumbers,
+        payoutStake
+      );
+
       const ticket = {
         ticketId,
+
         round,
+
         userId:
-          user.id,
+          String(user.id),
+
         betType,
+
         numbers:
           cleanNumbers,
-        stake,
-        perNumberStake,
-        settled: false,
-        won: null,
-        payout: 0,
-        winningNumber: null
+
+        stake:
+          Number(stake),
+
+        perNumberStake:
+          Number(
+            perNumberStake
+          ),
+
+        settled:
+          false,
+
+        won:
+          null,
+
+        payout:
+          0,
+
+        winningNumber:
+          null
       };
 
       try {
-        await createTicket(
-          ticket
-        );
-      } catch (ticketError) {
+        const created =
+          await createTicket(
+            ticket
+          );
+
+        if (!created) {
+          await changeBalance(
+            user.id,
+            stake
+          );
+
+          removeLiability(
+            round,
+            betType,
+            cleanNumbers,
+            payoutStake
+          );
+
+          return res.status(409).json({
+            error:
+              'በዚህ ዙር ቀድሞውኑ ትኬት ቆርጠዋል'
+          });
+        }
+      } catch (
+        ticketError
+      ) {
         await changeBalance(
           user.id,
           stake
@@ -1777,23 +2494,39 @@ app.post(
       );
 
       logActivity({
-        type: 'bet',
+        type:
+          'bet',
+
         userId:
           user.id,
+
         name:
-          user.first_name || null,
+          user.first_name ||
+          null,
+
         betType,
+
         numbers:
           cleanNumbers,
-        stake,
+
+        stake:
+          Number(stake),
+
         round
       });
 
       res.json({
+        success: true,
+
         ticket_id:
           ticketId,
+
+        round,
+
         balance:
-          deduction.balance
+          Number(
+            deduction.balance
+          )
       });
     } catch (err) {
       console.error(
@@ -1821,15 +2554,20 @@ app.get(
         req.query.initData || '';
 
       const round =
-        Number(req.query.round);
+        Number(
+          req.query.round
+        );
 
       const ticketId =
         String(
-          req.query.ticket_id || ''
+          req.query.ticket_id ||
+            ''
         );
 
       const user =
-        validateInitData(initData);
+        validateInitData(
+          initData
+        );
 
       if (!user) {
         return res.status(401).json({
@@ -1847,27 +2585,30 @@ app.get(
         });
       }
 
-      /*
-        IMPORTANT:
-        A round is considered finished only
-        after its betting period has closed.
+      const timing =
+        getRoundTiming(
+          round
+        );
 
-        ROUND_LENGTH = 50 seconds
-        BET_LENGTH   = 40 seconds
+      const nowUnix =
+        Math.floor(
+          Date.now() / 1000
+        );
+
+      /*
+        Result becomes available
+        when BET_LENGTH is finished.
 
         Example:
         round = 123
-        bet closes at:
-        123 * 50 + 40
+        start = 6150
+        bet close = 6190
+        result = available from 6190
       */
-      const roundBetCloseUnix =
-        round * ROUND_LENGTH + BET_LENGTH;
-
-      const nowUnix =
-        Math.floor(Date.now() / 1000);
 
       if (
-        nowUnix < roundBetCloseUnix
+        nowUnix <
+        timing.betCloseUnix
       ) {
         return res.status(425).json({
           error:
@@ -1876,9 +2617,9 @@ app.get(
       }
 
       const expectedTicketId =
-        round +
+        String(round) +
         '-' +
-        user.id;
+        String(user.id);
 
       if (
         ticketId !==
@@ -1903,15 +2644,27 @@ app.get(
           );
 
         return res.json({
+          success: true,
+
           winning_number:
-            resolved.winning_number,
+            Number(
+              resolved.winning_number
+            ),
+
           winning_color:
             resolved.winning_color,
-          won: false,
-          amount: 0,
+
+          won:
+            false,
+
+          amount:
+            0,
+
           balance:
-            await getBalance(
-              user.id
+            Number(
+              await getBalance(
+                user.id
+              )
             )
         });
       }
@@ -1943,39 +2696,58 @@ app.get(
         !settlement.alreadySettled
       ) {
         logActivity({
-          type: 'result',
+          type:
+            'result',
+
           userId:
             user.id,
+
           name:
-            user.first_name || null,
+            user.first_name ||
+            null,
+
           betType:
             ticket.betType,
+
           stake:
             ticket.stake,
+
           won:
             settlement.won,
+
           amount:
             settlement.amount,
+
           winningNumber:
             resolved.winning_number,
+
           round
         });
       }
 
       res.json({
+        success: true,
+
+        round,
+
         winning_number:
-          resolved.winning_number,
+          Number(
+            resolved.winning_number
+          ),
 
         winning_color:
           resolved.winning_color,
 
         won:
-          settlement.won,
+          !!settlement.won,
 
         amount:
-          settlement.amount,
+          Number(
+            settlement.amount || 0
+          ),
 
-        balance
+        balance:
+          Number(balance)
       });
     } catch (err) {
       console.error(
@@ -2003,10 +2775,14 @@ app.post(
         req.body.initData;
 
       const amount =
-        req.body.amount;
+        Number(
+          req.body.amount
+        );
 
       const user =
-        validateInitData(initData);
+        validateInitData(
+          initData
+        );
 
       if (!user) {
         return res.status(401).json({
@@ -2016,7 +2792,6 @@ app.post(
       }
 
       if (
-        typeof amount !== 'number' ||
         !Number.isFinite(amount) ||
         amount <= 0
       ) {
@@ -2039,16 +2814,25 @@ app.post(
       );
 
       logActivity({
-        type: 'deposit_request',
+        type:
+          'deposit_request',
+
         userId:
           user.id,
+
         name:
-          user.first_name || null,
+          user.first_name ||
+          null,
+
         amount
       });
 
       res.json({
-        orderId
+        success: true,
+
+        orderId,
+
+        amount
       });
     } catch (err) {
       console.error(
@@ -2075,13 +2859,14 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId || ''
+          req.body.orderId ||
+            ''
         );
 
       const adminId =
         String(
           req.body.adminId ||
-          'admin'
+            'admin'
         );
 
       const order =
@@ -2116,6 +2901,18 @@ app.post(
         });
       }
 
+      /*
+        Change balance first.
+        Only mark confirmed after
+        balance update succeeds.
+      */
+
+      const newBalance =
+        await changeBalance(
+          order.userId,
+          order.amount
+        );
+
       const marked =
         await markOrder(
           orderId,
@@ -2124,34 +2921,46 @@ app.post(
         );
 
       if (!marked) {
+        /*
+          Another admin handled it.
+          Return the credited amount to
+          avoid double credit.
+        */
+
+        await changeBalance(
+          order.userId,
+          -order.amount
+        );
+
         return res.status(409).json({
           error:
             'Already handled'
         });
       }
 
-      const newBalance =
-        await changeBalance(
-          order.userId,
-          order.amount
-        );
-
       logActivity({
         type:
           'deposit_confirmed',
+
         userId:
           order.userId,
+
         amount:
           order.amount,
+
         orderId,
+
         adminId
       });
 
       res.json({
+        success: true,
+
         userId:
           order.userId,
+
         balance:
-          newBalance
+          Number(newBalance)
       });
     } catch (err) {
       console.error(
@@ -2178,13 +2987,14 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId || ''
+          req.body.orderId ||
+            ''
         );
 
       const adminId =
         String(
           req.body.adminId ||
-          'admin'
+            'admin'
         );
 
       const order =
@@ -2236,15 +3046,21 @@ app.post(
       logActivity({
         type:
           'deposit_rejected',
+
         userId:
           order.userId,
+
         amount:
           order.amount,
+
         orderId,
+
         adminId
       });
 
       res.json({
+        success: true,
+
         userId:
           order.userId
       });
@@ -2274,13 +3090,17 @@ app.post(
         req.body.initData;
 
       const amount =
-        req.body.amount;
+        Number(
+          req.body.amount
+        );
 
       const phone =
         req.body.phone;
 
       const user =
-        validateInitData(initData);
+        validateInitData(
+          initData
+        );
 
       if (!user) {
         return res.status(401).json({
@@ -2290,7 +3110,6 @@ app.post(
       }
 
       if (
-        typeof amount !== 'number' ||
         !Number.isFinite(amount) ||
         amount <= 0
       ) {
@@ -2302,7 +3121,8 @@ app.post(
 
       if (
         !phone ||
-        typeof phone !== 'string' ||
+        typeof phone !==
+          'string' ||
         !phone.trim()
       ) {
         return res.status(400).json({
@@ -2320,7 +3140,12 @@ app.post(
       if (!deduction.ok) {
         return res.status(400).json({
           error:
-            'insufficient balance'
+            'insufficient balance',
+
+          balance:
+            Number(
+              deduction.balance
+            )
         });
       }
 
@@ -2344,22 +3169,35 @@ app.post(
         logActivity({
           type:
             'withdraw_request',
+
           userId:
             user.id,
+
           name:
-            user.first_name || null,
+            user.first_name ||
+            null,
+
           amount,
+
           phone:
             phone.trim(),
+
           orderId
         });
 
         res.json({
+          success: true,
+
           orderId,
+
           balance:
-            deduction.balance
+            Number(
+              deduction.balance
+            )
         });
-      } catch (orderError) {
+      } catch (
+        orderError
+      ) {
         await changeBalance(
           user.id,
           amount
@@ -2392,13 +3230,14 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId || ''
+          req.body.orderId ||
+            ''
         );
 
       const adminId =
         String(
           req.body.adminId ||
-          'admin'
+            'admin'
         );
 
       const order =
@@ -2455,18 +3294,26 @@ app.post(
       logActivity({
         type:
           'withdraw_confirmed',
+
         userId:
           order.userId,
+
         amount:
           order.amount,
+
         orderId,
+
         adminId
       });
 
       res.json({
+        success: true,
+
         userId:
           order.userId,
-        balance
+
+        balance:
+          Number(balance)
       });
     } catch (err) {
       console.error(
@@ -2493,13 +3340,14 @@ app.post(
     try {
       const orderId =
         String(
-          req.body.orderId || ''
+          req.body.orderId ||
+            ''
         );
 
       const adminId =
         String(
           req.body.adminId ||
-          'admin'
+            'admin'
         );
 
       const order =
@@ -2534,6 +3382,17 @@ app.post(
         });
       }
 
+      /*
+        Return the reserved withdrawal
+        amount to the user.
+      */
+
+      const restoredBalance =
+        await changeBalance(
+          order.userId,
+          order.amount
+        );
+
       const marked =
         await markOrder(
           orderId,
@@ -2542,33 +3401,47 @@ app.post(
         );
 
       if (!marked) {
+        /*
+          Another admin already handled it.
+          Remove the accidental restore.
+        */
+
+        await changeBalance(
+          order.userId,
+          -order.amount
+        );
+
         return res.status(409).json({
           error:
             'Already handled'
         });
       }
 
-      const balance =
-        await changeBalance(
-          order.userId,
-          order.amount
-        );
-
       logActivity({
         type:
           'withdraw_rejected',
+
         userId:
           order.userId,
+
         amount:
           order.amount,
+
         orderId,
+
         adminId
       });
 
       res.json({
+        success: true,
+
         userId:
           order.userId,
-        balance
+
+        balance:
+          Number(
+            restoredBalance
+          )
       });
     } catch (err) {
       console.error(
@@ -2596,6 +3469,18 @@ initDb()
         console.log(
           'Server listening on port ' +
           PORT
+        );
+
+        console.log(
+          'ROUND_LENGTH = ' +
+          ROUND_LENGTH +
+          ' seconds'
+        );
+
+        console.log(
+          'BET_LENGTH = ' +
+          BET_LENGTH +
+          ' seconds'
         );
       }
     );
