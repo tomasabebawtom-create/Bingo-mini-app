@@ -848,12 +848,68 @@ main{
 
   display:flex;
 
+  flex-direction:column;
+
   align-items:center;
 
   justify-content:center;
 
+  gap:3px;
+
   border:
     1px solid var(--line2);
+
+  text-align:center;
+
+}
+
+
+.round-number.is-open{
+  border-color: rgba(78,155,114,.45);
+}
+
+
+.round-number.is-wait{
+  border-color: rgba(198,149,68,.45);
+}
+
+
+.round-number span .state-label{
+
+  font-family:var(--ui);
+
+  font-size:.68rem;
+
+  font-weight:700;
+
+  letter-spacing:.03em;
+
+}
+
+
+.round-number span.state-open .state-label{
+  color:var(--win2);
+}
+
+
+.round-number span.state-wait .state-label{
+  color:var(--brass2);
+}
+
+
+.round-number span.state-open,
+.round-number span.state-wait{
+  font-size:1rem;
+}
+
+
+.round-number span .state-count{
+
+  font-family:var(--mono);
+
+  font-size:1.5rem;
+
+  font-weight:600;
 
 }
 
@@ -2580,22 +2636,23 @@ function renderRound(round){
 
   const result = round.result;
 
-  if(result && typeof result.winning_number === "number"){
+  const wheel = els.winningNumber.closest(".round-number");
 
-    els.winningNumber.textContent = result.winning_number;
+  wheel.classList.remove("is-open","is-wait");
 
-    els.winningColor.textContent = result.winning_color || "—";
+  if(round.betting_open){
 
-  }
-  else{
+    els.winningNumber.className = "state-open";
 
-    els.winningNumber.textContent = "—";
+    els.winningNumber.innerHTML =
+      '<span class="state-label">ክፍት</span>' +
+      '<span class="state-count">' +
+      Math.max(0, round.seconds_to_bet_close) +
+      'ሰ</span>';
 
     els.winningColor.textContent = "—";
 
-  }
-
-  if(round.betting_open){
+    wheel.classList.add("is-open");
 
     els.roundStatus.textContent = "LIVE";
     els.roundStatus.className = "badge live";
@@ -2610,6 +2667,15 @@ function renderRound(round){
   }
   else if(!result){
 
+    els.winningNumber.className = "state-wait";
+
+    els.winningNumber.innerHTML =
+      '<span class="state-label">እየተጠናቀቀ</span>';
+
+    els.winningColor.textContent = "—";
+
+    wheel.classList.add("is-wait");
+
     els.roundStatus.textContent = "PENDING";
     els.roundStatus.className = "badge wait";
 
@@ -2619,6 +2685,15 @@ function renderRound(round){
 
   }
   else{
+
+    els.winningNumber.className = "";
+
+    els.winningNumber.textContent =
+      typeof result.winning_number === "number"
+        ? result.winning_number
+        : "—";
+
+    els.winningColor.textContent = result.winning_color || "—";
 
     els.roundStatus.textContent = "RESULT";
     els.roundStatus.className = "badge";
