@@ -2154,9 +2154,6 @@ app.get(
 
 /* =========================================================
    BALANCE (by userId — used by the Telegram bot)
-   NOTE: this endpoint is added so that bot.py, which has no
-   Telegram Mini App initData available, can look up a user's
-   balance directly by their Telegram user id.
 ========================================================= */
 
 app.get(
@@ -2244,18 +2241,6 @@ app.post(
             'round closed'
         });
       }
-
-      /* =====================================================
-         IMPORTANT:
-         ROUND_LENGTH = 50 sec
-         BET_LENGTH   = 40 sec
-
-         Betting is accepted ONLY during:
-         second 0 → second 39
-
-         At second 40:
-         BET CLOSES.
-      ===================================================== */
 
       if (
         !isBettingOpen(round)
@@ -2421,13 +2406,6 @@ app.post(
             'ይህ ውርርድ በአሁኑ ጊዜ አይቀበልም። የround liability limit ደርሷል'
         });
       }
-
-      /*
-        IMPORTANT:
-        First deduct the user's balance.
-        If ticket creation fails,
-        the balance is returned.
-      */
 
       const deduction =
         await deductIfSufficient(
@@ -2599,11 +2577,16 @@ app.get(
           req.query.round
         );
 
+      /*
+        ticket_id ካልተላከ ባዶ string ይሆናል።
+        Ticket የሌለው user እንኳን
+        round result ማየት ይችላል።
+      */
       const ticketId =
         String(
           req.query.ticket_id ||
             ''
-        );
+        ).trim();
 
       const user =
         validateInitData(
@@ -2616,6 +2599,11 @@ app.get(
             'invalid initData'
         });
       }
+
+      touch(
+        user.id,
+        user.first_name
+      );
 
       if (
         !Number.isInteger(round)
@@ -2637,14 +2625,8 @@ app.get(
         );
 
       /*
-        Result becomes available
-        when BET_LENGTH is finished.
-
-        Example:
-        round = 123
-        start = 6150
-        bet close = 6190
-        result = available from 6190
+        Result የሚታየው BET_LENGTH
+        ከተጠናቀቀ በኋላ ነው።
       */
 
       if (
@@ -2657,14 +2639,30 @@ app.get(
         });
       }
 
+      /*
+        =====================================================
+        IMPORTANT FIX
+        =====================================================
+
+        ticket_id ካለ ብቻ እንመረምራለን።
+
+        ticket_id ካልተላከ:
+        → 403 አይሰጥም
+        → round result ያያል
+
+        ticket_id ከተላከ:
+        → የዚህ user ticket መሆኑን እናረጋግጣለን
+      */
+
       const expectedTicketId =
         String(round) +
         '-' +
         String(user.id);
 
       if (
+        ticketId &&
         ticketId !==
-        expectedTicketId
+          expectedTicketId
       ) {
         return res.status(403).json({
           error:
@@ -2672,11 +2670,26 @@ app.get(
         });
       }
 
+      /*
+        User በዚህ round ticket
+        እንዳለው እንፈልጋለን።
+
+        ከሌለ:
+        → result ብቻ
+        → payout የለም
+      */
+
       const ticket =
         await getTicket(
           round,
           user.id
         );
+
+      /*
+        =====================================================
+        NO TICKET
+        =====================================================
+      */
 
       if (!ticket) {
         const resolved =
@@ -2684,8 +2697,15 @@ app.get(
             round
           );
 
+        const balance =
+          await getBalance(
+            user.id
+          );
+
         return res.json({
           success: true,
+
+          round,
 
           winning_number:
             Number(
@@ -2702,18 +2722,25 @@ app.get(
             0,
 
           balance:
-            Number(
-              await getBalance(
-                user.id
-              )
-            )
+            Number(balance)
         });
       }
+
+      /*
+        =====================================================
+        HAS TICKET
+        =====================================================
+      */
 
       const resolved =
         await resolveRound(
           round
         );
+
+      /*
+        Ticket ካለ settlement
+        እና payout እዚህ ይሰራል።
+      */
 
       const settlement =
         await settleTicket(
@@ -2727,10 +2754,9 @@ app.get(
           user.id
         );
 
-      touch(
-        user.id,
-        user.first_name
-      );
+      /*
+        Activity log
+      */
 
       if (
         settlement.exists &&
@@ -2766,7 +2792,11 @@ app.get(
         });
       }
 
-      res.json({
+      /*
+        Final response
+      */
+
+      return res.json({
         success: true,
 
         round,
@@ -2790,13 +2820,14 @@ app.get(
         balance:
           Number(balance)
       });
+
     } catch (err) {
       console.error(
         'round-result error:',
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         error:
           'failed to load round result'
       });
@@ -2942,12 +2973,6 @@ app.post(
         });
       }
 
-      /*
-        Change balance first.
-        Only mark confirmed after
-        balance update succeeds.
-      */
-
       const newBalance =
         await changeBalance(
           order.userId,
@@ -2962,12 +2987,6 @@ app.post(
         );
 
       if (!marked) {
-        /*
-          Another admin handled it.
-          Return the credited amount to
-          avoid double credit.
-        */
-
         await changeBalance(
           order.userId,
           -order.amount
@@ -3423,11 +3442,6 @@ app.post(
         });
       }
 
-      /*
-        Return the reserved withdrawal
-        amount to the user.
-      */
-
       const restoredBalance =
         await changeBalance(
           order.userId,
@@ -3442,11 +3456,6 @@ app.post(
         );
 
       if (!marked) {
-        /*
-          Another admin already handled it.
-          Remove the accidental restore.
-        */
-
         await changeBalance(
           order.userId,
           -order.amount
