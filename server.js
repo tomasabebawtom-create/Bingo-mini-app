@@ -2097,7 +2097,7 @@ app.get(
 );
 
 /* =========================================================
-   BALANCE
+   BALANCE (via Telegram Mini App initData)
 ========================================================= */
 
 app.get(
@@ -2141,6 +2141,47 @@ app.get(
     } catch (err) {
       console.error(
         'balance error:',
+        err
+      );
+
+      res.status(500).json({
+        error:
+          'failed to load balance'
+      });
+    }
+  }
+);
+
+/* =========================================================
+   BALANCE (by userId — used by the Telegram bot)
+   NOTE: this endpoint is added so that bot.py, which has no
+   Telegram Mini App initData available, can look up a user's
+   balance directly by their Telegram user id.
+========================================================= */
+
+app.get(
+  '/api/balance/:userId',
+  async function (req, res) {
+    try {
+      const userId =
+        String(req.params.userId);
+
+      const balance =
+        await getBalance(userId);
+
+      touch(userId, null);
+
+      res.json({
+        success: true,
+
+        user_id: userId,
+
+        balance:
+          Number(balance)
+      });
+    } catch (err) {
+      console.error(
+        'balance/:userId error:',
         err
       );
 
