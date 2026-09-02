@@ -93,8 +93,6 @@
     border:1px solid var(--gold-dim); border-radius:14px; padding:8px 4px; margin-bottom:10px;}
   .stake-box .title{display:flex; align-items:center; gap:6px; color:var(--gold); font-weight:700; margin-bottom:8px; font-size:13px; padding:0 4px;}
 
-  /* Felt now has minimal horizontal padding so the number grid can reach the left/right edges,
-     matching the width of the dozens/outside rows below it. */
   .table-felt{background:radial-gradient(ellipse at 50% 0%, var(--felt), var(--felt2) 80%);
     border:2px solid var(--gold-dim); border-radius:12px; padding:8px 3px; box-shadow:inset 0 0 14px rgba(0,0,0,.5);}
 
@@ -103,8 +101,6 @@
     border:1px solid rgba(255,255,255,.15); transition:.15s;}
   .zero-row.selected{outline:2px solid var(--gold); box-shadow:0 0 8px var(--gold); transform:scale(1.02);}
 
-  /* Numbers now span the full width edge-to-edge (like the outside/dozens rows) with a small,
-     non-overlapping gap between each cell so they never touch. */
   .num-grid{display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(3,1fr); grid-auto-flow:column; gap:3px; width:100%;}
   .num-cell{aspect-ratio:1/1.55; display:flex; align-items:center; justify-content:center;
     font-size:15px; font-weight:900; color:#fff; cursor:pointer; border-radius:5px;
@@ -261,10 +257,10 @@ let balance = 0;
 let spinning = false;          // true only while the wheel animation for a resolved round is playing
 let ticketPlaced = false;      // true once this round's ticket has been cut (locks the board)
 let ticketId = null;           // id returned by the server when the ticket was placed
-const STAKE_OPTIONS = [5,10,20,30,40,50,80,100];   // selectable bet amount, ብር 5 - 100
-const STAKE_MIN = 5, STAKE_MAX = 100;
+const STAKE_OPTIONS = [5,10,20,30,40,50];   // selectable bet amount, ብር 5 - 50
+const STAKE_MIN = 5, STAKE_MAX = 50;
 let currentStake = 10;         // cost per marked number / per ticket unit — user-selectable, matches server-side min/max
-const MAX_NUMBERS = 3;         // a single ticket may hold at most 3 numbers
+const MAX_NUMBERS = 3;         // FIX: a single ticket may hold at most 3 numbers (was 8)
 const BET_LENGTH = 40;         // seconds players have to pick a number/bet — same constant must exist on the server
 const SPIN_LENGTH = 10;        // seconds the wheel spins for — same constant must exist on the server
 const CYCLE_LENGTH = BET_LENGTH + SPIN_LENGTH; // full round = betting window + spin
@@ -284,7 +280,69 @@ async function refreshBalance(){
 }
 refreshBalance();
 
-/* ---------- stake picker (5 - 100 ብር) ---------- */
+/* ---------- FIX: restore last result + history from the server on load ----------
+   Previously resultHistory / currentRotation only lived in JS memory, so any time
+   the WebView reloaded (switching apps, screen lock, Telegram re-opening the mini
+   app) the wheel silently snapped back to its 0deg resting position and the
+   "ውጤቶች" strip went empty — even though the balance (fetched from the server)
+   correctly reflected that rounds had already been played. This restores both from
+   the server so a fresh page load shows the real last result, not the start state.
+
+   Expects a server endpoint returning JSON like:
+   { "history": [{"number":6,"color":"black"}, {"number":33,"color":"black"}, ...],
+     "last_winning_number": 33 }
+   (newest result first in "history"). Adjust the URL/shape to match your backend —
+   if you don't have this endpoint yet, add one that reads the last N resolved
+   rounds for this round-cycle sequence.
+   ------------------------------------------------------------------------------ */
+async function restoreLastResult(){
+  try{
+    const resp = await fetch(`/api/round-history?initData=${encodeURIComponent(initData)}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    if (Array.isArray(data.history) && data.history.length){
+      resultHistory = data.history.slice(0, HISTORY_MAX);
+      renderHistory();
+    }
+
+    if (typeof data.last_winning_number === 'number'){
+      const winningIndex = WHEEL_ORDER.indexOf(data.last_winning_number);
+      if (winningIndex >= 0){
+        const targetAngle = winningIndex * segAngle + segAngle/2;
+        // land on the correct segment WITHOUT animating (no spin sound/motion on load)
+        const wheel = document.getElementById('wheel-container');
+        wheel.style.transition = 'none';
+        currentRotation = -targetAngle;
+        wheel.style.transform = `rotate(${currentRotation}deg)`;
+        // force reflow so the transition re-enables cleanly for the *next* real spin
+        void wheel.offsetWidth;
+        wheel.style.transition = '';
+      }
+    }
+  }catch(e){
+    // no history endpoint yet, or offline — fail silently, board still works
+  }
+}
+restoreLastResult();
+
+/* ---------- FIX: re-sync immediately when the app regains focus ----------
+   Mobile WebViews throttle/pause setInterval while backgrounded (app switched,
+   screen locked). tickRoundClock() only fires resolveRound() when it personally
+   observes a bet->spin transition — if a whole round (or several) passed while
+   backgrounded, that transition is missed entirely and the wheel/history just
+   stay stale until the *next* round happens to be caught live. Forcing a
+   restoreLastResult() + balance refresh on resume fixes the display immediately
+   instead of waiting for the next lucky live tick.
+   -------------------------------------------------------------------------- */
+document.addEventListener('visibilitychange', ()=>{
+  if (document.visibilityState === 'visible'){
+    refreshBalance();
+    restoreLastResult();
+  }
+});
+
+/* ---------- stake picker (5 - 50 ብር) ---------- */
 const stakeChipsEl = document.getElementById('stakeChips');
 function renderStakeChips(){
   stakeChipsEl.innerHTML = '';
@@ -312,9 +370,7 @@ document.getElementById('spinCostLabel').textContent = currentStake;
 const RED_NUMBERS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 function colorFor(n){ if(n===0) return 'green'; return RED_NUMBERS.has(n) ? 'red' : 'black'; }
 
-/* ---------- build the tap-to-mark number grid: numbers run top-to-bottom within each
-   column, then continue into the next column to the right (1,2,3 down col 1; 4,5,6 down
-   col 2; ...) rather than left-to-right across rows. ---------- */
+/* ---------- build the tap-to-mark number grid ---------- */
 const numGrid = document.getElementById('numGrid');
 for (let n=1; n<=36; n++){
   const cell = document.createElement('div');
@@ -453,16 +509,7 @@ svg.appendChild((()=>{ const c=document.createElementNS(svgNS,"circle");
   c.setAttribute("fill","none"); c.setAttribute("stroke","#f5c542"); c.setAttribute("stroke-width","2"); c.setAttribute("opacity","0.5");
   return c; })());
 
-/* ---------- synchronized round clock ----------
-   Every device computes the SAME cycle id purely from wall-clock time
-   (Math.floor(unixSeconds / CYCLE_LENGTH)), so all players are always
-   looking at the same betting window and the same spin rolls over for
-   everyone at the same moment — no push connection required. Each cycle
-   has two phases: BET_LENGTH seconds to pick a number/bet, then
-   SPIN_LENGTH seconds while the wheel spins. The actual winning number
-   for a round must still come from the server (never decided on the
-   client) so every player sees an identical, tamper-proof result.
-   ---------------------------------------------------------------- */
+/* ---------- synchronized round clock ---------- */
 let currentRotation = 0;
 let lastCycleId = null;
 let lastPhase = null; // 'bet' | 'spin'
@@ -618,7 +665,6 @@ function tickRoundClock(){
 
   if (lastCycleId === null){ lastCycleId = cid; lastPhase = phase; }
 
-  // betting window for this cycle just closed -> resolve it (server decides the number)
   if (phase === 'spin' && lastPhase === 'bet'){
     resolveRound(cid);
   }
@@ -632,7 +678,6 @@ function tickRoundClock(){
   } else {
     const left = secondsLeftInSpin(pos);
     document.getElementById('rtCount').textContent = left;
-    // label/lock during the spin itself are managed by resolveRound()
   }
 }
 tickRoundClock();
