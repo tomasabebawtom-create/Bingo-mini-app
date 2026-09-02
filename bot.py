@@ -13,7 +13,7 @@ bot = telebot.TeleBot(TOKEN)
 # የአድሚኖች Telegram user ID ዝርዝር - እነዚህ ብቻ ናቸው ተቀማጭ የሚያጸድቁት
 # የራስህን ID ለማወቅ ቦቱ ላይ /myid ብቻ ላክ
 ADMIN_IDS = [8706330167]  # <-- ካገኘህ በኋላ እዚህ ተካ
-TELEBIRR_NUMBER = '0940501400'
+TELEBIRR_NUMBER = '0999792114'
 
 # ✅ ወደ ትክክለኛው production backend (Render) ቀጥታ ይጠቁማል።
 SERVER_URL = 'https://bingo-mini-app-1.onrender.com/api'
