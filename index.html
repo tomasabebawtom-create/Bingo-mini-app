@@ -406,8 +406,14 @@ function updatePlayerCount(){
 
 /* ---------- DEMO / SIMULATED winner ticker ----------
    These are clearly labeled DEMO / SIMULATED — not real players or real winners.
-   A brand new random phone number + amount is generated every round
-   (no fixed list, so it never repeats the same value twice in a row). */
+   A brand new random phone number + amount is generated every time it fires
+   (no fixed list, so it never repeats the same value twice in a row).
+
+   UPDATED: instead of showing one winner per round, a new "pop up" winner
+   appears repeatedly, at a random interval each time (2–10 seconds, never
+   more than 10s). Because the interval itself is randomized, the NUMBER
+   of winners shown during any single 40-second betting window also
+   naturally varies — never a fixed count. */
 const TICKER_AMOUNTS = [180, 240, 300, 360, 420, 480, 600, 720, 840, 900, 1080, 1200, 1440, 1500, 1800, 2160];
 let lastTickerPhone = null;
 function randomDemoPhone(){
@@ -432,15 +438,20 @@ function showDemoWinner(){
   void ticker.offsetWidth;
   ticker.style.animation = 'tickerFade .45s ease';
 }
-showDemoWinner();
-let lastTickerRound = null;
-function updateWinnerTicker(){
-  const cid = roundIdNowSafe();
-  if (lastTickerRound === null){ lastTickerRound = cid; return; }
-  if (cid !== lastTickerRound){ lastTickerRound = cid; showDemoWinner(); }
+
+/* Random-interval scheduler: fires again and again forever, each gap
+   between 2.5s and 6s, so per round the winner count keeps changing. */
+let winnerTimerHandle = null;
+function scheduleNextDemoWinner(){
+  const delay = 2000 + Math.random() * 8000; // 2s – 10s, random every time (never more than 10s)
+  winnerTimerHandle = setTimeout(()=>{
+    showDemoWinner();
+    scheduleNextDemoWinner();
+  }, delay);
 }
-/* roundIdNow() is defined further below; this small wrapper lets updateWinnerTicker
-   be declared before roundIdNow() without throwing a reference error. */
+showDemoWinner();
+scheduleNextDemoWinner();
+
 function roundIdNowSafe(){ return Math.floor(Date.now()/1000 / CYCLE_LENGTH); }
 
 /* ---------- roulette colours ---------- */
@@ -747,7 +758,6 @@ function renderHistory(){
 }
 
 function tickRoundClock(){
-  updateWinnerTicker();
   updatePlayerCount();
 
   const cid = roundIdNow();
