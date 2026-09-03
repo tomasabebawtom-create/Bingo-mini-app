@@ -1097,51 +1097,6 @@ main{
 }
 
 
-.round-meta{
-
-  display:grid;
-
-  grid-template-columns:1fr 1fr;
-
-  gap:1px;
-
-  background:var(--line2);
-
-  border:
-    1px solid var(--line2);
-
-}
-
-
-.meta{
-
-  padding:11px 13px;
-
-  background:var(--panel);
-
-}
-
-
-.meta-label{
-
-  color:var(--dim);
-
-  font-size:.64rem;
-
-}
-
-
-.meta-value{
-
-  margin-top:4px;
-
-  font-family:var(--mono);
-
-  font-size:.82rem;
-
-}
-
-
 /* =========================
    ACTIVITY (ticker tape)
 ========================= */
@@ -1869,222 +1824,154 @@ tbody tr:hover{
 
 
     <!-- =========================
-         ROUND + ACTIVITY
+         ROUND MONITOR (full width)
     ========================= -->
 
-    <section class="grid-main">
+    <div class="panel" style="margin-bottom:16px;">
 
 
-      <!-- ROUND -->
+      <div class="panel-head">
 
-      <div class="panel">
+        <div>
 
+          <h3>
+            🎰 Round Monitor
+          </h3>
 
-        <div class="panel-head">
+          <p>
+            Current game round status
+          </p>
 
-          <div>
-
-            <h3>
-              🎰 Round Monitor
-            </h3>
-
-            <p>
-              Current game round status
-            </p>
-
-          </div>
+        </div>
 
 
-          <span
-            class="badge live"
-            id="roundStatus">
+        <span
+          class="badge live"
+          id="roundStatus">
 
-            LIVE
+          LIVE
 
+        </span>
+
+      </div>
+
+
+      <div class="ticket-body">
+
+
+        <div class="round-number">
+
+          <span id="winningNumber">
+            —
           </span>
 
         </div>
 
 
-        <div class="ticket-body">
+        <div
+          class="round-phase"
+          id="roundPhase">
+
+          ---
+
+        </div>
 
 
-          <div class="round-number">
+        <div
+          class="preview-box"
+          id="previewBox"
+          style="display:none;">
 
-            <span id="winningNumber">
-              —
-            </span>
+          <span class="preview-tag">
+            🔒 ቀጣይ ውጤት ቅድመ-እይታ (Admin ብቻ)
+          </span>
+
+          <span id="previewText">—</span>
+
+        </div>
+
+
+        <div class="ticket-perf"></div>
+
+
+        <!-- =========================
+             MANUAL RESULT CONTROL
+        ========================= -->
+
+        <div class="result-control">
+
+
+          <div class="result-control-title">
+
+            🎯 ቀጣይ ውጤት ቁጥር
+
+          </div>
+
+
+          <div class="result-control-row">
+
+
+            <input
+              id="nextWinningNumber"
+              type="number"
+              min="0"
+              max="36"
+              step="1"
+              inputmode="numeric"
+              placeholder="0 - 36"
+              autocomplete="off">
+
+
+            <button
+              class="btn primary"
+              id="setNextNumberBtn">
+
+              ውጤት አዘጋጅ
+
+            </button>
+
+
+            <button
+              class="btn"
+              id="randomNumberBtn">
+
+              Random
+
+            </button>
+
+
+          </div>
+
+
+          <div class="result-control-help">
+
+            0–36 ውስጥ ቁጥር ያስገቡ።
+            ይህ ለቀጣዩ Round የሚወጣውን
+            Winning Number ያዘጋጃል።
 
           </div>
 
 
           <div
-            class="round-phase"
-            id="roundPhase">
-
-            ---
-
-          </div>
-
-
-          <div
-            class="preview-box"
-            id="previewBox"
-            style="display:none;">
-
-            <span class="preview-tag">
-              🔒 ቀጣይ ውጤት ቅድመ-እይታ (Admin ብቻ)
-            </span>
-
-            <span id="previewText">—</span>
-
-          </div>
-
-
-          <div class="ticket-perf"></div>
-
-
-          <!-- =========================
-               MANUAL RESULT CONTROL
-          ========================= -->
-
-          <div class="result-control">
-
-
-            <div class="result-control-title">
-
-              🎯 ቀጣይ ውጤት ቁጥር
-
-            </div>
-
-
-            <div class="result-control-row">
-
-
-              <input
-                id="nextWinningNumber"
-                type="number"
-                min="0"
-                max="36"
-                step="1"
-                inputmode="numeric"
-                placeholder="0 - 36"
-                autocomplete="off">
-
-
-              <button
-                class="btn primary"
-                id="setNextNumberBtn">
-
-                ውጤት አዘጋጅ
-
-              </button>
-
-
-              <button
-                class="btn"
-                id="randomNumberBtn">
-
-                Random
-
-              </button>
-
-
-            </div>
-
-
-            <div class="result-control-help">
-
-              0–36 ውስጥ ቁጥር ያስገቡ።
-              ይህ ለቀጣዩ Round የሚወጣውን
-              Winning Number ያዘጋጃል።
-
-            </div>
-
-
-            <div
-              class="current-selected"
-              id="currentSelected">
-
-            </div>
-
-
-          </div>
-
-
-          <div class="round-meta">
-
-
-            <div class="meta">
-
-              <div class="meta-label">
-                Current Round
-              </div>
-
-              <div
-                class="meta-value"
-                id="currentRound">
-
-                —
-
-              </div>
-
-            </div>
-
-
-            <div class="meta">
-
-              <div class="meta-label">
-                Result Color
-              </div>
-
-              <div
-                class="meta-value"
-                id="winningColor">
-
-                —
-
-              </div>
-
-            </div>
-
-
-            <div class="meta">
-
-              <div class="meta-label">
-                Online Users
-              </div>
-
-              <div
-                class="meta-value"
-                id="roundOnline">
-
-                —
-
-              </div>
-
-            </div>
-
-
-            <div class="meta">
-
-              <div class="meta-label">
-                Refresh
-              </div>
-
-              <div class="meta-value">
-                5 sec
-              </div>
-
-            </div>
-
+            class="current-selected"
+            id="currentSelected">
 
           </div>
 
 
         </div>
 
+
       </div>
+
+    </div>
+
+
+    <!-- =========================
+         ACTIVITY + USERS (side by side)
+    ========================= -->
+
+    <section class="grid-main">
 
 
       <!-- ACTIVITY -->
@@ -2130,102 +2017,96 @@ tbody tr:hover{
       </div>
 
 
-    </section>
+      <!-- USERS -->
+
+      <div class="panel">
 
 
-    <!-- =========================
-         USERS
-    ========================= -->
-
-    <section
-      class="panel users-panel">
+        <div class="panel-head">
 
 
-      <div class="panel-head">
+          <div>
+
+            <h3>
+              👥 Users
+            </h3>
+
+            <p>
+              User balances and online status
+            </p>
+
+          </div>
 
 
-        <div>
+          <span
+            class="badge"
+            id="usersCount">
 
-          <h3>
-            👥 Users
-          </h3>
+            0
 
-          <p>
-            User balances and online status
-          </p>
+          </span>
+
 
         </div>
 
 
-        <span
-          class="badge"
-          id="usersCount">
+        <div class="user-tools">
 
-          0
+          <input
+            class="search"
+            id="userSearch"
+            type="text"
+            placeholder="🔎 በስም ወይም User ID ይፈልጉ…">
 
-        </span>
-
-
-      </div>
-
-
-      <div class="user-tools">
-
-        <input
-          class="search"
-          id="userSearch"
-          type="text"
-          placeholder="🔎 በስም ወይም User ID ይፈልጉ…">
-
-      </div>
+        </div>
 
 
-      <div class="table-wrap">
+        <div class="table-wrap">
 
 
-        <table>
+          <table>
 
 
-          <thead>
+            <thead>
 
-            <tr>
+              <tr>
 
-              <th data-sort="online">
-                ●
-              </th>
+                <th data-sort="online">
+                  ●
+                </th>
 
-              <th data-sort="name">
-                User
-              </th>
+                <th data-sort="name">
+                  User
+                </th>
 
-              <th
-                data-sort="balance"
-                class="right">
+                <th
+                  data-sort="balance"
+                  class="right">
 
-                Balance
+                  Balance
 
-              </th>
+                </th>
 
-            </tr>
+              </tr>
 
-          </thead>
-
-
-          <tbody id="usersBody">
-
-          </tbody>
+            </thead>
 
 
-        </table>
+            <tbody id="usersBody">
+
+            </tbody>
+
+
+          </table>
+
+
+        </div>
 
 
       </div>
 
 
     </section>
-
-
-  </section>
 
 </main>
 
@@ -2293,9 +2174,6 @@ const els = {
   statWithdrawals: $("statWithdrawals"),
   statProfit: $("statProfit"),
   winningNumber: $("winningNumber"),
-  winningColor: $("winningColor"),
-  currentRound: $("currentRound"),
-  roundOnline: $("roundOnline"),
   roundStatus: $("roundStatus"),
   roundPhase: $("roundPhase"),
   previewBox: $("previewBox"),
@@ -2674,8 +2552,6 @@ function renderStats(stats){
   els.statProfit.className =
     "tick-value " + (profit >= 0 ? "brass" : "loss");
 
-  els.roundOnline.textContent = fmt(stats.online_now);
-
 }
 
 
@@ -2694,10 +2570,6 @@ function renderRound(round){
     return;
   }
 
-  els.currentRound.textContent = round.round ?? "—";
-
-  els.roundOnline.textContent = fmt(round.online_now);
-
   const result = round.result;
 
   const wheel = els.winningNumber.closest(".round-number");
@@ -2713,8 +2585,6 @@ function renderRound(round){
       '<span class="state-count">' +
       Math.max(0, round.seconds_to_bet_close) +
       'ሰ</span>';
-
-    els.winningColor.textContent = "—";
 
     wheel.classList.add("is-open");
 
@@ -2736,8 +2606,6 @@ function renderRound(round){
     els.winningNumber.innerHTML =
       '<span class="state-label">እየተጠናቀቀ</span>';
 
-    els.winningColor.textContent = "—";
-
     wheel.classList.add("is-wait");
 
     els.roundStatus.textContent = "PENDING";
@@ -2757,13 +2625,13 @@ function renderRound(round){
         ? result.winning_number
         : "—";
 
-    els.winningColor.textContent = result.winning_color || "—";
-
     els.roundStatus.textContent = "RESULT";
     els.roundStatus.className = "badge";
 
     els.roundPhase.textContent =
-      "ውጤት ወጥቷል · ቀጣይ ዙር በ" +
+      "ውጤት ወጥቷል · ቀለም: " +
+      (result.winning_color || "—") +
+      " · ቀጣይ ዙር በ" +
       Math.max(0, round.seconds_to_round_end) +
       "ሰ";
 
