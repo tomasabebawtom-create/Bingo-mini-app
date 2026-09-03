@@ -409,12 +409,13 @@ function updatePlayerCount(){
    A brand new random phone number + amount is generated every time it fires
    (no fixed list, so it never repeats the same value twice in a row).
 
-   UPDATED: instead of showing one winner per round, a new "pop up" winner
-   appears repeatedly, at a random interval each time (2–10 seconds, never
-   more than 10s). Because the interval itself is randomized, the NUMBER
-   of winners shown during any single 40-second betting window also
-   naturally varies — never a fixed count. */
+   UPDATED: each betting round now shows a fixed burst of 2–5 winners
+   (randomized per round), each one blinking in exactly 1.8 seconds apart.
+   The burst restarts every time a new betting round begins. */
 const TICKER_AMOUNTS = [180, 240, 300, 360, 420, 480, 600, 720, 840, 900, 1080, 1200, 1440, 1500, 1800, 2160];
+const TICKER_BLINK_MS = 1800;      // fixed 1.8s gap between each blink
+const TICKER_MIN_PER_ROUND = 2;
+const TICKER_MAX_PER_ROUND = 5;
 let lastTickerPhone = null;
 function randomDemoPhone(){
   let phone;
@@ -439,18 +440,24 @@ function showDemoWinner(){
   ticker.style.animation = 'tickerFade .45s ease';
 }
 
-/* Random-interval scheduler: fires again and again forever, each gap
-   between 2.5s and 6s, so per round the winner count keeps changing. */
-let winnerTimerHandle = null;
-function scheduleNextDemoWinner(){
-  const delay = 2000 + Math.random() * 8000; // 2s – 10s, random every time (never more than 10s)
-  winnerTimerHandle = setTimeout(()=>{
-    showDemoWinner();
-    scheduleNextDemoWinner();
-  }, delay);
+/* Fires a random count (2–5) of winner blinks for the current round,
+   each one exactly TICKER_BLINK_MS apart. */
+let winnerBurstTimers = [];
+function clearWinnerBurst(){
+  winnerBurstTimers.forEach(t=>clearTimeout(t));
+  winnerBurstTimers = [];
+}
+function startWinnerBurstForRound(){
+  clearWinnerBurst();
+  const span = TICKER_MAX_PER_ROUND - TICKER_MIN_PER_ROUND + 1;
+  const count = TICKER_MIN_PER_ROUND + Math.floor(Math.random() * span); // 2..5
+  for (let i = 0; i < count; i++){
+    const t = setTimeout(showDemoWinner, i * TICKER_BLINK_MS);
+    winnerBurstTimers.push(t);
+  }
 }
 showDemoWinner();
-scheduleNextDemoWinner();
+startWinnerBurstForRound();
 
 function roundIdNowSafe(){ return Math.floor(Date.now()/1000 / CYCLE_LENGTH); }
 
@@ -768,6 +775,10 @@ function tickRoundClock(){
 
   if (phase === 'spin' && lastPhase === 'bet'){
     resolveRound(cid);
+  }
+  // new betting round started -> restart the 2-5 winner blink burst
+  if (phase === 'bet' && cid !== lastCycleId){
+    startWinnerBurstForRound();
   }
   lastPhase = phase;
   lastCycleId = cid;
