@@ -8,6 +8,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 
+# ✅ Proxy ማዋቀሪያ — Telegram API traffic ብቻ በዚህ በኩል ያልፋል
+# TELEGRAM_PROXY_URL environment variable ካላስቀመጥክ ቦቱ ያለ proxy ይሞክራል
+# (እና VPN ካላበራህ Telegram block ሊገጥመው ይችላል)።
+PROXY_URL = os.environ.get('TELEGRAM_PROXY_URL')  # ለምሳሌ: socks5://user:pass@1.2.3.4:1080
+if PROXY_URL:
+    telebot.apihelper.proxy = {'https': PROXY_URL}
+    logger.info("Bot using proxy for Telegram API.")
+else:
+    logger.warning("No TELEGRAM_PROXY_URL set — Telegram API might be blocked without VPN.")
+
 bot = telebot.TeleBot(TOKEN)
 
 # የአድሚኖች Telegram user ID ዝርዝር - እነዚህ ብቻ ናቸው ተቀማጭ የሚያጸድቁት
