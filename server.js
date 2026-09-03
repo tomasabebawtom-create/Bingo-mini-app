@@ -709,6 +709,53 @@ function parseUnsafe(initData) {
   }
 }
 
+/*
+  ✅ አዲስ፦ resolveRequester
+  Deposit/withdraw ጥያቄዎች ከሁለት ቦታ ሊመጡ ይችላሉ፦
+  1. Mini App (Spin Win wheel) - initData ይልካል፣ HMAC ፊርማ ይረጋገጣል
+  2. Telegram bot text command (/deposit, /withdraw) - initData የለውም፣
+     በቀጥታ userId ይልካል
+
+  ይህ function initData ካለ በጥብቅ ያረጋግጣል፣ ከሌለ ደግሞ በ request body
+  ላይ የተላከውን userId ይቀበላል (bot ራሱ Telegram ውስጥ የተረጋገጠ ተጠቃሚ
+  ስለሆነ safe ነው)።
+*/
+function resolveRequester(req) {
+  const initData = req.body.initData;
+
+  if (initData) {
+    const user = validateInitData(initData);
+
+    if (!user) {
+      return {
+        error: 'invalid initData'
+      };
+    }
+
+    return {
+      id: user.id,
+      first_name: user.first_name || ''
+    };
+  }
+
+  const bodyUserId = req.body.userId;
+
+  if (
+    bodyUserId !== undefined &&
+    bodyUserId !== null &&
+    String(bodyUserId).trim() !== ''
+  ) {
+    return {
+      id: String(bodyUserId).trim(),
+      first_name: ''
+    };
+  }
+
+  return {
+    error: 'missing user identification'
+  };
+}
+
 /* =========================================================
    ONLINE USERS / ACTIVITY
 ========================================================= */
@@ -2842,27 +2889,29 @@ app.get(
 
 /* =========================================================
    DEPOSIT REQUEST
+   ✅ ተስተካክሏል፦ ከ Mini App (initData) ወይም ከ bot text command
+   (userId በቀጥታ) ሁለቱም ምንጮች ጥያቄ መቀበል ይችላል።
 ========================================================= */
 
 app.post(
   '/api/deposit/request',
   async function (req, res) {
     try {
-      const initData =
-        req.body.initData;
-
       const amount =
         Number(req.body.amount);
 
-      const user =
-        validateInitData(initData);
+      const requester =
+        resolveRequester(req);
 
-      if (!user) {
+      if (requester.error) {
         return res.status(401).json({
           error:
-            'invalid initData'
+            requester.error
         });
       }
+
+      const userId = requester.id;
+      const userFirstName = requester.first_name;
 
       if (
         !Number.isFinite(amount) ||
@@ -2877,13 +2926,13 @@ app.post(
       const orderId =
         await createOrder(
           'deposit',
-          user.id,
+          userId,
           amount
         );
 
       touch(
-        user.id,
-        user.first_name
+        userId,
+        userFirstName
       );
 
       logActivity({
@@ -2891,10 +2940,10 @@ app.post(
           'deposit_request',
 
         userId:
-          user.id,
+          userId,
 
         name:
-          user.first_name || null,
+          userFirstName || null,
 
         amount,
 
@@ -3122,30 +3171,32 @@ app.post(
 
 /* =========================================================
    WITHDRAW REQUEST
+   ✅ ተስተካክሏል፦ ከ Mini App (initData) ወይም ከ bot text command
+   (userId በቀጥታ) ሁለቱም ምንጮች ጥያቄ መቀበል ይችላል።
 ========================================================= */
 
 app.post(
   '/api/withdraw/request',
   async function (req, res) {
     try {
-      const initData =
-        req.body.initData;
-
       const amount =
         Number(req.body.amount);
 
       const phone =
         req.body.phone;
 
-      const user =
-        validateInitData(initData);
+      const requester =
+        resolveRequester(req);
 
-      if (!user) {
+      if (requester.error) {
         return res.status(401).json({
           error:
-            'invalid initData'
+            requester.error
         });
       }
+
+      const userId = requester.id;
+      const userFirstName = requester.first_name;
 
       if (
         !Number.isFinite(amount) ||
@@ -3170,7 +3221,7 @@ app.post(
 
       const deduction =
         await deductIfSufficient(
-          user.id,
+          userId,
           amount
         );
 
@@ -3188,7 +3239,7 @@ app.post(
         const orderId =
           await createOrder(
             'withdraw',
-            user.id,
+            userId,
             amount,
             {
               phone:
@@ -3197,8 +3248,8 @@ app.post(
           );
 
         touch(
-          user.id,
-          user.first_name
+          userId,
+          userFirstName
         );
 
         logActivity({
@@ -3206,10 +3257,10 @@ app.post(
             'withdraw_request',
 
           userId:
-            user.id,
+            userId,
 
           name:
-            user.first_name || null,
+            userFirstName || null,
 
           amount,
 
@@ -3229,7 +3280,7 @@ app.post(
         });
       } catch (orderError) {
         await changeBalance(
-          user.id,
+          userId,
           amount
         );
 
