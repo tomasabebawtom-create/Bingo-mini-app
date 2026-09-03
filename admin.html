@@ -1126,9 +1126,15 @@ main{
 
   display:grid;
 
-  grid-template-columns:34px 1fr auto;
+  grid-template-columns:22px 1fr auto;
 
-  gap:10px;
+  grid-template-areas:
+    "mark name amount"
+    "mark text text";
+
+  column-gap:8px;
+
+  row-gap:3px;
 
   padding:12px 16px;
 
@@ -1145,6 +1151,8 @@ main{
 
 .activity-mark{
 
+  grid-area:mark;
+
   font-family:var(--mono);
 
   font-size:.65rem;
@@ -1160,12 +1168,11 @@ main{
 .activity.loss .activity-mark{ color:var(--loss2); }
 
 
-.activity-main{
-  min-width:0;
-}
-
-
 .activity-name{
+
+  grid-area:name;
+
+  min-width:0;
 
   font-size:.79rem;
 
@@ -1182,22 +1189,34 @@ main{
 
 .activity-text{
 
-  margin-top:3px;
+  grid-area:text;
+
+  min-width:0;
 
   color:var(--dim);
 
   font-size:.69rem;
+
+  display:flex;
+
+  justify-content:space-between;
+
+  gap:8px;
 
 }
 
 
 .activity-amount{
 
+  grid-area:amount;
+
   font-family:var(--mono);
 
   font-size:.78rem;
 
   text-align:right;
+
+  white-space:nowrap;
 
 }
 
@@ -1208,9 +1227,7 @@ main{
 
 .activity-time{
 
-  display:block;
-
-  margin-top:3px;
+  flex-shrink:0;
 
   color:var(--dim);
 
@@ -1529,8 +1546,12 @@ tbody tr:hover{
   }
 
   .activity{
-    grid-template-columns:1fr;
-    gap:2px;
+    grid-template-columns:1fr auto;
+    grid-template-areas:
+      "name amount"
+      "text text";
+    column-gap:6px;
+    row-gap:2px;
     padding:9px 10px;
   }
 
@@ -1539,7 +1560,7 @@ tbody tr:hover{
   }
 
   .activity-amount{
-    text-align:left;
+    text-align:right;
   }
 
   .user-tools{
@@ -2937,21 +2958,17 @@ function renderFeed(items){
 
         <div class="activity-mark">${mark}</div>
 
-        <div class="activity-main">
-
-          <div class="activity-name">
-            ${escapeHtml(name)}
-          </div>
-
-          <div class="activity-text">
-            ${escapeHtml(text)}
-          </div>
-
+        <div class="activity-name">
+          ${escapeHtml(name)}
         </div>
 
         <div class="activity-amount ${cls === "win" ? "win" : cls === "loss" ? "loss" : ""}">
-
           ${escapeHtml(amount)}
+        </div>
+
+        <div class="activity-text">
+
+          <span>${escapeHtml(text)}</span>
 
           <span class="activity-time">
             ${escapeHtml(time)}
