@@ -17,7 +17,9 @@ TELEBIRR_NUMBER = '0999792114'
 
 # ✅ ወደ ትክክለኛው production backend (Render) ቀጥታ ይጠቁማል።
 SERVER_URL = 'https://bingo-mini-app-1.onrender.com/api'
-REQUEST_TIMEOUT = 8
+# ✅ ተስተካክሏል፦ Render free tier cold start እስከ 30-50 ሰከንድ ሊወስድ ስለሚችል
+# REQUEST_TIMEOUT ከ 8 ወደ 30 ሰከንድ ከፍ ብሏል፣ ያለጊዜው timeout እንዳይፈጠር።
+REQUEST_TIMEOUT = 30
 
 # Spin Win mini app URL — Render ላይ ቀጥታ (live) የተሰቀለው ገጽ
 SPIN_WIN_URL = 'https://bingo-mini-app-1.onrender.com'
@@ -120,8 +122,10 @@ def check_balance_command(message):
             bal = resp.json().get('balance', 0)
             bot.send_message(message.chat.id, f"💰 የኪስ ቦርሳ ሂሳብዎ: {bal} ብር ነው።")
         else:
+            logger.error(f"Balance check failed: {resp.status_code} - {resp.text}")
             bot.send_message(message.chat.id, "ሂሳብ ማግኘት አልተቻለም።")
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Balance check connection failed: {e}")
         bot.send_message(message.chat.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
 
@@ -256,8 +260,10 @@ def callback_query(call):
                 bot.answer_callback_query(call.id)
                 bot.send_message(call.message.chat.id, f"💰 የኪስ ቦርሳ ሂሳብዎ: {bal} ብር ነው።")
             else:
+                logger.error(f"Balance check failed: {resp.status_code} - {resp.text}")
                 bot.answer_callback_query(call.id, "ሂሳብ ማግኘት አልተቻለም።")
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Balance check connection failed: {e}")
             bot.answer_callback_query(call.id, "ከሰርቨሩ ጋር መገናኘት አልተቻለም።")
 
     elif call.data == "withdraw":
@@ -344,7 +350,12 @@ def process_withdraw_phone(message, amount):
         )
 
         if response.status_code != 200:
-            err = response.json().get('error', 'ጥያቄ መፍጠር አልተቻለም።')
+            # ✅ ተስተካክሏል፦ ትክክለኛው status code እና response body log ውስጥ ይታያል
+            logger.error(f"Withdraw request failed: {response.status_code} - {response.text}")
+            try:
+                err = response.json().get('error', 'ጥያቄ መፍጠር አልተቻለም።')
+            except ValueError:
+                err = 'ጥያቄ መፍጠር አልተቻለም።'
             bot.send_message(
         message.chat.id, f"❌ {err}")
             return
@@ -466,6 +477,9 @@ def process_deposit_amount(message):
         )
 
         if response.status_code != 200:
+            # ✅ ተስተካክሏል፦ ትክክለኛው status code እና response body log ውስጥ ይታያል
+            # (bot_output.log ውስጥ ይመልከቱ)፣ ስለ ስህተቱ ትክክለኛ ምክንያት ለማወቅ
+            logger.error(f"Deposit request failed: {response.status_code} - {response.text}")
             bot.send_message(
         message.chat.id, "❌ ጥያቄ መፍጠር አልተቻለም። እባክዎ እንደገና ይሞክሩ።")
             return
