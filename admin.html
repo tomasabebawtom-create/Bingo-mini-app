@@ -1129,8 +1129,8 @@ main{
   grid-template-columns:22px 1fr auto;
 
   grid-template-areas:
-    "mark name amount"
-    "mark text text";
+    "mark name time"
+    "mark text amount";
 
   column-gap:8px;
 
@@ -1197,12 +1197,6 @@ main{
 
   font-size:.69rem;
 
-  display:flex;
-
-  justify-content:space-between;
-
-  gap:8px;
-
 }
 
 
@@ -1227,7 +1221,11 @@ main{
 
 .activity-time{
 
-  flex-shrink:0;
+  grid-area:time;
+
+  text-align:right;
+
+  white-space:nowrap;
 
   color:var(--dim);
 
@@ -1548,8 +1546,8 @@ tbody tr:hover{
   .activity{
     grid-template-columns:1fr auto;
     grid-template-areas:
-      "name amount"
-      "text text";
+      "name time"
+      "text amount";
     column-gap:6px;
     row-gap:2px;
     padding:9px 10px;
@@ -1557,10 +1555,6 @@ tbody tr:hover{
 
   .activity-mark{
     display:none;
-  }
-
-  .activity-amount{
-    text-align:right;
   }
 
   .user-tools{
@@ -2962,18 +2956,16 @@ function renderFeed(items){
           ${escapeHtml(name)}
         </div>
 
-        <div class="activity-amount ${cls === "win" ? "win" : cls === "loss" ? "loss" : ""}">
-          ${escapeHtml(amount)}
+        <div class="activity-time">
+          ${escapeHtml(time)}
         </div>
 
         <div class="activity-text">
+          ${escapeHtml(text)}
+        </div>
 
-          <span>${escapeHtml(text)}</span>
-
-          <span class="activity-time">
-            ${escapeHtml(time)}
-          </span>
-
+        <div class="activity-amount ${cls === "win" ? "win" : cls === "loss" ? "loss" : ""}">
+          ${escapeHtml(amount)}
         </div>
 
       </div>
