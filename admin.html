@@ -934,6 +934,59 @@ main{
 
 
 /* =========================
+   PREVIEW (admin-only, pre-reveal number)
+========================= */
+
+.preview-box{
+
+  margin:0 0 20px;
+
+  padding:11px 13px;
+
+  background:var(--ink);
+
+  border:
+    1px solid rgba(78,155,114,.28);
+
+  text-align:center;
+
+  font-family:var(--mono);
+
+  font-size:.76rem;
+
+  color:var(--win2);
+
+}
+
+
+.preview-box .preview-tag{
+
+  color:var(--dim);
+
+  font-family:var(--ui);
+
+  font-size:.62rem;
+
+  letter-spacing:.03em;
+
+  display:block;
+
+  margin-bottom:4px;
+
+}
+
+
+.preview-box.forced{
+
+  border-color:
+    rgba(198,149,68,.32);
+
+  color:var(--brass2);
+
+}
+
+
+/* =========================
    RESULT CONTROL
 ========================= */
 
@@ -1889,6 +1942,20 @@ tbody tr:hover{
           </div>
 
 
+          <div
+            class="preview-box"
+            id="previewBox"
+            style="display:none;">
+
+            <span class="preview-tag">
+              🔒 ቀጣይ ውጤት ቅድመ-እይታ (Admin ብቻ)
+            </span>
+
+            <span id="previewText">—</span>
+
+          </div>
+
+
           <div class="ticket-perf"></div>
 
 
@@ -2246,6 +2313,8 @@ const els = {
   roundOnline: $("roundOnline"),
   roundStatus: $("roundStatus"),
   roundPhase: $("roundPhase"),
+  previewBox: $("previewBox"),
+  previewText: $("previewText"),
   feed: $("feed"),
   activityCount: $("activityCount"),
   usersBody: $("usersBody"),
@@ -2520,6 +2589,12 @@ async function apiPost(path, body){
    the whole Promise.all into "Update
    failed" and freezing the dashboard on
    stale numbers.
+
+   Also fetches /api/admin/preview-number
+   so the admin can see, before the round
+   closes, what number will come out —
+   whether it will be random or the one
+   the admin picked.
 ========================= */
 
 async function fetchAll(){
@@ -2537,7 +2612,8 @@ async function fetchAll(){
       api("/api/admin/stats"),
       api("/api/admin/users-report"),
       api("/api/admin/activity?limit=60"),
-      api("/api/admin/current-round")
+      api("/api/admin/current-round"),
+      api("/api/admin/preview-number")
 
     ]);
 
@@ -2545,6 +2621,7 @@ async function fetchAll(){
     const users = results[1];
     const activity = results[2];
     const round = results[3];
+    const preview = results[4];
 
     setConnection("ok");
 
@@ -2557,6 +2634,8 @@ async function fetchAll(){
     renderFeed(activity.activity || []);
 
     renderRound(round);
+
+    renderPreview(preview);
 
     els.lastUpdated.textContent =
       "Last updated: " +
@@ -2711,6 +2790,51 @@ function renderRound(round){
 
 
 /* =========================
+   PREVIEW (admin-only)
+
+   Response shape from /api/admin/preview-number:
+   { round, number, color, source: "forced" | "random" }
+
+   ይህ ቁጥር round ገና ካልተዘጋ (ውጤት ገና ካልታወቀ)
+   ለ admin ብቻ አስቀድሞ ያሳያል፣ ቁጥሩ random ወይም
+   admin የመረጠው ቢሆንም ተመሳሳይ ቁጥር ነው ቆይቶ
+   እንደ Round ውጤት ተደርጎ የሚወጣው (guaranteed).
+========================= */
+
+function renderPreview(preview){
+
+  if(!preview || typeof preview.number !== "number"){
+
+    els.previewBox.style.display = "none";
+
+    return;
+
+  }
+
+  els.previewBox.style.display = "block";
+
+  els.previewBox.classList.toggle(
+    "forced",
+    preview.source === "forced"
+  );
+
+  const sourceLabel =
+    preview.source === "forced"
+      ? "የተመረጠ"
+      : "Random";
+
+  els.previewText.textContent =
+    preview.number +
+    " · " +
+    (preview.color || "—") +
+    " · " +
+    sourceLabel +
+    " (ራውንድ " + preview.round + ")";
+
+}
+
+
+/* =========================
    SET NEXT WINNING NUMBER
 ========================= */
 
@@ -2787,15 +2911,51 @@ els.nextWinningNumber.addEventListener("keydown", function(event){
 });
 
 
-els.randomNumberBtn.addEventListener("click", function(){
+els.randomNumberBtn.addEventListener("click", async function(){
 
-  const random = Math.floor(Math.random() * 37);
+  if(!baseUrl || !secret){
 
-  els.nextWinningNumber.value = random;
+    toast("መጀመሪያ Admin Dashboard ያገናኙ","error");
 
-  els.currentSelected.textContent = "የተመረጠ: " + random;
+    return;
 
-  setNextWinningNumber(random);
+  }
+
+  els.setNextNumberBtn.disabled = true;
+  els.randomNumberBtn.disabled = true;
+
+  try{
+
+    /*
+      "Random" ስንል ወደ server የተጠራው
+      forced number ያጠፋል (number: null)፣
+      ከዚያ በኋላ ወዲያውኑ preview-number ን
+      ጠርተን የትኛው ቁጥር በ random እንደሚወጣ
+      ወዲያውኑ እናሳያለን — round ገና ሳይዘጋ።
+    */
+
+    await apiPost("/api/admin/set-next-number", { number:null });
+
+    els.currentSelected.textContent = "ቀጣዩ ውጤት Random ሆኗል";
+
+    toast("ቀጣዩ ውጤት Random ሆኗል","success");
+
+    await fetchAll();
+
+  }
+  catch(error){
+
+    console.error(error);
+
+    toast("Random ማድረግ አልተቻለም: " + error.message,"error");
+
+  }
+  finally{
+
+    els.setNextNumberBtn.disabled = false;
+    els.randomNumberBtn.disabled = false;
+
+  }
 
 });
 
