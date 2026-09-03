@@ -505,12 +505,17 @@ main{
 
 .ticker{
 
-  display:grid;
+  display:flex;
 
-  grid-template-columns:
-    repeat(5,1fr);
+  align-items:stretch;
 
-  margin:22px 0 24px;
+  overflow-x:auto;
+
+  -webkit-overflow-scrolling:touch;
+
+  scrollbar-width:none;
+
+  margin:16px 0 20px;
 
   border:
     1px solid var(--line2);
@@ -520,11 +525,26 @@ main{
 }
 
 
+.ticker::-webkit-scrollbar{
+  display:none;
+}
+
+
 .tick{
 
   position:relative;
 
-  padding:16px 18px;
+  flex:1 0 auto;
+
+  display:flex;
+
+  align-items:baseline;
+
+  gap:7px;
+
+  white-space:nowrap;
+
+  padding:10px 14px;
 
   border-right:
     1px dashed var(--line2);
@@ -541,20 +561,18 @@ main{
 
   color:var(--dim);
 
-  font-size:.66rem;
+  font-size:.62rem;
 
-  letter-spacing:.02em;
+  letter-spacing:.01em;
 
 }
 
 
 .tick-value{
 
-  margin-top:10px;
-
   font-family:var(--mono);
 
-  font-size:1.5rem;
+  font-size:.92rem;
 
   font-weight:600;
 
@@ -582,11 +600,7 @@ main{
 
 .tick-sub{
 
-  margin-top:6px;
-
-  color:var(--dim);
-
-  font-size:.65rem;
+  display:none;
 
 }
 
@@ -1530,19 +1544,6 @@ tbody tr:hover{
    RESPONSIVE
 ========================= */
 
-@media(max-width:1150px){
-
-  .ticker{
-    grid-template-columns:repeat(3,1fr);
-  }
-
-  .tick:nth-child(3){
-    border-right:0;
-  }
-
-}
-
-
 @media(max-width:850px){
 
   .grid-main{
@@ -1553,22 +1554,6 @@ tbody tr:hover{
 
 
 @media(max-width:650px){
-
-  .ticker{
-    grid-template-columns:repeat(2,1fr);
-  }
-
-  .tick:nth-child(odd){
-    border-right:1px dashed var(--line2);
-  }
-
-  .tick:nth-child(even){
-    border-right:0;
-  }
-
-  .tick-value{
-    font-size:1.2rem;
-  }
 
   .round-number{
     width:130px;
