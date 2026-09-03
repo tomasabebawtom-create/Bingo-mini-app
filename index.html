@@ -128,11 +128,12 @@
   .spin-cost{text-align:center; color:var(--text-dim); font-size:12px; margin-top:4px;}
   .spin-cost b{color:var(--gold);}
 
-  .stake-picker{display:flex; align-items:center; gap:5px; margin-bottom:6px; padding:0 4px;}
-  .stake-picker .sp-label{font-size:11px; color:var(--text-dim); font-weight:700; margin-right:2px; white-space:nowrap;}
-  .stake-chips{display:flex; gap:4px; flex:1; flex-wrap:wrap;}
-  .stake-chip{flex:1; min-width:28px; text-align:center; padding:5px 3px; border-radius:7px; font-weight:800; font-size:11.5px;
-    color:var(--text); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); cursor:pointer; transition:.12s;}
+  .stake-picker{display:block; margin-bottom:7px; padding:0 2px;}
+  .stake-picker .sp-label{display:block; font-size:11px; color:var(--text-dim); font-weight:700; margin-bottom:6px; white-space:nowrap;}
+  .stake-chips{display:grid; grid-template-columns:repeat(9,minmax(0,1fr)); gap:3px; width:100%;}
+  .stake-chip{min-width:0; width:100%; text-align:center; padding:7px 1px; border-radius:7px; font-weight:800; font-size:11px;
+    color:var(--text); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); cursor:pointer; transition:.12s; user-select:none;}
+  .stake-chip:active{transform:scale(.96);}
   .stake-chip.active{background:linear-gradient(90deg,var(--gold),#e0a92f); color:#2b1140; border-color:var(--gold);
     box-shadow:0 0 8px rgba(245,197,66,.5);}
 
@@ -160,6 +161,12 @@
     animation:winPop .5s cubic-bezier(.3,1.6,.5,1);}
   @keyframes winPop{0%{transform:scale(0.3); opacity:0;} 60%{transform:scale(1.1);} 100%{transform:scale(1); opacity:1;}}
   @keyframes winFadeOut{0%{opacity:1;} 75%{opacity:1;} 100%{opacity:0; display:none;}}
+
+  @media(max-width:360px){
+    .stake-chips{gap:2px;}
+    .stake-chip{font-size:9.5px; padding:7px 0;}
+    .num-cell{font-size:13px;}
+  }
 </style>
 </head>
 <body>
@@ -224,7 +231,7 @@
         <div class="outside-cell" data-bet="high">19–36</div>
       </div>
     </div>
-    <div class="selected-line">የተመረጠው ውርርድ፦ <b id="selectedLabel">ቀይ Red</b></div>
+    <div class="selected-line">የተመረጠው ውርርድ፦ <b id="selectedLabel">— ገና አልተመረጠም —</b></div>
     <div class="marked-count" id="markedCount"></div>
     <div class="spin-cost">እያንዳንዱ ቁጥር <b id="spinCostLabel">10</b> ብር ያስከፍላል</div>
   </div>
@@ -234,7 +241,7 @@
 
 <script>
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-if (tg) { tg.ready(); tg.expand(); }
+if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 const initData = (tg && tg.initData) ? tg.initData : '';
 
 function toast(t){
@@ -245,28 +252,34 @@ function toast(t){
 function showWinFlash(amount){
   const el = document.getElementById('winFlash');
   document.getElementById('winFlashInner').textContent = '🎉 እንኳን ደስ አለዎት! ' + amount + ' ብር አሸንፈዋል 🎉';
-  el.classList.remove('show'); void el.offsetWidth; // restart animation
+  el.classList.remove('show'); void el.offsetWidth;
   el.classList.add('show');
   setTimeout(()=>el.classList.remove('show'), 2400);
 }
 
 /* ---------- state ---------- */
-let betType = null;            // 'red' | 'black' | 'odd' | 'even' | 'low' | 'high' | 'dozen1-3' | 'number'
-let markedNumbers = [];        // array of selected numbers (0-36), max MAX_NUMBERS, used when betType === 'number'
+let betType = null;
+let markedNumbers = [];
 let balance = 0;
-let spinning = false;          // true only while the wheel animation for a resolved round is playing
-let ticketPlaced = false;      // true once this round's ticket has been cut (locks the board)
-let ticketId = null;           // id returned by the server when the ticket was placed
-const STAKE_OPTIONS = [5,10,20,30,40,50];   // selectable bet amount, ብር 5 - 50
-const STAKE_MIN = 5, STAKE_MAX = 50;
-let currentStake = 10;         // cost per marked number / per ticket unit — user-selectable, matches server-side min/max
-const MAX_NUMBERS = 3;         // FIX: a single ticket may hold at most 3 numbers (was 8)
-const BET_LENGTH = 40;         // seconds players have to pick a number/bet — same constant must exist on the server
-const SPIN_LENGTH = 10;        // seconds the wheel spins for — same constant must exist on the server
-const RESULT_DISPLAY_MS = 4000; // FIX: how long the winning/losing message stays on screen before the board resets for the next round
-const CYCLE_LENGTH = BET_LENGTH + SPIN_LENGTH; // full round = betting window + spin
-const HISTORY_MAX = 10;        // how many past results to keep in the history strip
-let resultHistory = [];        // most recent winning numbers, newest first
+let spinning = false;
+let ticketPlaced = false;
+let ticketId = null;
+
+/*
+  FIX: stake options now match the server's STAKE_OPTIONS exactly
+  (5,10,20,30,40,50,80,100,200) — previously 80/100/200 were missing here
+  so users could never select or bet them even though the server allowed it.
+*/
+const STAKE_OPTIONS = [5,10,20,30,40,50,80,100,200];
+const STAKE_MIN = 5, STAKE_MAX = 200;
+let currentStake = 10;
+const MAX_NUMBERS = 8;
+const BET_LENGTH = 40;
+const SPIN_LENGTH = 10;
+const RESULT_DISPLAY_MS = 4000;
+const CYCLE_LENGTH = BET_LENGTH + SPIN_LENGTH;
+const HISTORY_MAX = 10;
+let resultHistory = [];
 
 /* ---------- wallet ---------- */
 async function refreshBalance(){
@@ -281,21 +294,6 @@ async function refreshBalance(){
 }
 refreshBalance();
 
-/* ---------- FIX: restore last result + history from the server on load ----------
-   Previously resultHistory / currentRotation only lived in JS memory, so any time
-   the WebView reloaded (switching apps, screen lock, Telegram re-opening the mini
-   app) the wheel silently snapped back to its 0deg resting position and the
-   "ውጤቶች" strip went empty — even though the balance (fetched from the server)
-   correctly reflected that rounds had already been played. This restores both from
-   the server so a fresh page load shows the real last result, not the start state.
-
-   Expects a server endpoint returning JSON like:
-   { "history": [{"number":6,"color":"black"}, {"number":33,"color":"black"}, ...],
-     "last_winning_number": 33 }
-   (newest result first in "history"). Adjust the URL/shape to match your backend —
-   if you don't have this endpoint yet, add one that reads the last N resolved
-   rounds for this round-cycle sequence.
-   ------------------------------------------------------------------------------ */
 async function restoreLastResult(){
   try{
     const resp = await fetch(`/api/round-history?initData=${encodeURIComponent(initData)}`);
@@ -311,31 +309,18 @@ async function restoreLastResult(){
       const winningIndex = WHEEL_ORDER.indexOf(data.last_winning_number);
       if (winningIndex >= 0){
         const targetAngle = winningIndex * segAngle + segAngle/2;
-        // land on the correct segment WITHOUT animating (no spin sound/motion on load)
         const wheel = document.getElementById('wheel-container');
         wheel.style.transition = 'none';
         currentRotation = -targetAngle;
         wheel.style.transform = `rotate(${currentRotation}deg)`;
-        // force reflow so the transition re-enables cleanly for the *next* real spin
         void wheel.offsetWidth;
         wheel.style.transition = '';
       }
     }
-  }catch(e){
-    // no history endpoint yet, or offline — fail silently, board still works
-  }
+  }catch(e){}
 }
 restoreLastResult();
 
-/* ---------- FIX: re-sync immediately when the app regains focus ----------
-   Mobile WebViews throttle/pause setInterval while backgrounded (app switched,
-   screen locked). tickRoundClock() only fires resolveRound() when it personally
-   observes a bet->spin transition — if a whole round (or several) passed while
-   backgrounded, that transition is missed entirely and the wheel/history just
-   stay stale until the *next* round happens to be caught live. Forcing a
-   restoreLastResult() + balance refresh on resume fixes the display immediately
-   instead of waiting for the next lucky live tick.
-   -------------------------------------------------------------------------- */
 document.addEventListener('visibilitychange', ()=>{
   if (document.visibilityState === 'visible'){
     refreshBalance();
@@ -343,7 +328,7 @@ document.addEventListener('visibilitychange', ()=>{
   }
 });
 
-/* ---------- stake picker (5 - 50 ብር) ---------- */
+/* ---------- stake picker ---------- */
 const stakeChipsEl = document.getElementById('stakeChips');
 function renderStakeChips(){
   stakeChipsEl.innerHTML = '';
@@ -371,7 +356,7 @@ document.getElementById('spinCostLabel').textContent = currentStake;
 const RED_NUMBERS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 function colorFor(n){ if(n===0) return 'green'; return RED_NUMBERS.has(n) ? 'red' : 'black'; }
 
-/* ---------- build the tap-to-mark number grid ---------- */
+/* ---------- number grid ---------- */
 const numGrid = document.getElementById('numGrid');
 for (let n=1; n<=36; n++){
   const cell = document.createElement('div');
@@ -382,16 +367,15 @@ for (let n=1; n<=36; n++){
   numGrid.appendChild(cell);
 }
 
-/* ---------- labels for the "selected" line ---------- */
 const BET_LABELS = {
   red:'ቀይ Red', black:'ጥቁር Black', odd:'ጎዶሎ Odd', even:'ጥምዝ Even',
   low:'1–18', high:'19–36',
   dozen1:'1ኛ ደርዘን (1–12)', dozen2:'2ኛ ደርዘን (13–24)', dozen3:'3ኛ ደርዘን (25–36)',
 };
 
-/* ---------- tap-to-mark handlers ---------- */
-const numberEls = document.querySelectorAll('[data-bet="number"]');   // zero-row + 1-36 grid
-const outsideEls = document.querySelectorAll('.outside-cell[data-bet]'); // dozens / red-black / odd-even / low-high
+const numberEls = document.querySelectorAll('[data-bet="number"]');
+const outsideEls = document.querySelectorAll('.outside-cell[data-bet]');
+const zeroRow = document.querySelector('.zero-row[data-bet="number"]');
 
 function refreshSelectedLine(){
   const label = document.getElementById('selectedLabel');
@@ -411,7 +395,6 @@ function refreshSelectedLine(){
     !(betType === 'number' ? markedNumbers.length > 0 : !!betType);
 }
 
-// numbers: toggle mark, up to MAX_NUMBERS, clears any outside-bet selection
 numberEls.forEach(el=>{
   el.addEventListener('click', ()=>{
     if (ticketPlaced || spinning) return;
@@ -431,6 +414,7 @@ numberEls.forEach(el=>{
     if (markedNumbers.length > 0){
       betType = 'number';
       outsideEls.forEach(e=>e.classList.remove('selected'));
+      zeroRow.classList.remove('selected');
     } else {
       betType = null;
     }
@@ -439,12 +423,23 @@ numberEls.forEach(el=>{
   });
 });
 
-// outside bets: single-select, clears any marked numbers
+zeroRow.addEventListener('click', ()=>{
+  if (ticketPlaced || spinning) return;
+  outsideEls.forEach(e=>e.classList.remove('selected'));
+  numberEls.forEach(e=>e.classList.remove('marked'));
+  markedNumbers = [0];
+  betType = 'number';
+  zeroRow.classList.add('selected');
+  refreshSelectedLine();
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+});
+
 outsideEls.forEach(el=>{
   el.addEventListener('click', ()=>{
     if (ticketPlaced || spinning) return;
     outsideEls.forEach(e=>e.classList.remove('selected'));
     el.classList.add('selected');
+    zeroRow.classList.remove('selected');
     betType = el.dataset.bet;
     markedNumbers = [];
     numberEls.forEach(e=>e.classList.remove('marked'));
@@ -513,7 +508,7 @@ svg.appendChild((()=>{ const c=document.createElementNS(svgNS,"circle");
 /* ---------- synchronized round clock ---------- */
 let currentRotation = 0;
 let lastCycleId = null;
-let lastPhase = null; // 'bet' | 'spin'
+let lastPhase = null;
 
 function roundIdNow(){ return Math.floor(Date.now()/1000 / CYCLE_LENGTH); }
 function cyclePosNow(){ return Math.floor(Date.now()/1000) % CYCLE_LENGTH; }
@@ -524,6 +519,7 @@ function secondsLeftInSpin(pos){ return CYCLE_LENGTH - pos; }
 function lockBoard(){
   numberEls.forEach(el=>el.classList.add('disabled'));
   outsideEls.forEach(el=>el.classList.add('disabled'));
+  zeroRow.classList.add('disabled');
 }
 function unlockBoardForNewRound(){
   markedNumbers = [];
@@ -532,6 +528,8 @@ function unlockBoardForNewRound(){
   ticketId = null;
   numberEls.forEach(el=>{ el.classList.remove('marked'); el.classList.remove('disabled'); });
   outsideEls.forEach(el=>{ el.classList.remove('selected'); el.classList.remove('disabled'); });
+  zeroRow.classList.remove('selected');
+  zeroRow.classList.remove('disabled');
   document.getElementById('resultLine').textContent = '';
   document.getElementById('resultLine').className = 'result-line';
   document.getElementById('ticketBtn').textContent = '🎫 ትኬት ቁረጥ';
@@ -638,14 +636,10 @@ async function resolveRound(roundId){
     if (resultHistory.length > HISTORY_MAX) resultHistory.length = HISTORY_MAX;
     renderHistory();
 
-    /* FIX: ውጤቱ (🎉/😔 መልእክቱ) ከመታየቱ በፊት ወዲያውኑ ይጠፋ ስለነበር ተጠቃሚው ውጤቱን
-       ፈጽሞ አያይም ነበር — ወደ "ይምረጡ" ገፅ ወዲያውኑ ይመለስ ነበር (እንደ home page ሆኖ ይታይ ነበር).
-       አሁን ውጤቱ ለ RESULT_DISPLAY_MS ያህል በስክሪኑ ላይ እንዲቆይ ካደረግን በኋላ ብቻ ቦርዱን እናጸዳለን። */
     setTimeout(unlockBoardForNewRound, RESULT_DISPLAY_MS);
   }, SPIN_LENGTH * 1000);
 }
 
-/* ---------- last 20 results strip ---------- */
 function renderHistory(){
   const strip = document.getElementById('historyStrip');
   if (!resultHistory.length){
@@ -661,7 +655,6 @@ function renderHistory(){
   });
 }
 
-/* ---------- 1-second tick shared by every player's device ---------- */
 function tickRoundClock(){
   const cid = roundIdNow();
   const pos = cyclePosNow();
