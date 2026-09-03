@@ -18,7 +18,7 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 
 const STARTING_BALANCE = 0;
 
-const STAKE_OPTIONS = [5, 10, 20, 30, 40, 50, 80, 100];
+const STAKE_OPTIONS = [5, 10, 20, 30, 40, 50, 80, 100, 200];
 
 const MAX_NUMBERS = 8;
 
