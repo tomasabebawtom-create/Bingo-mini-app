@@ -1502,7 +1502,62 @@ tbody tr:hover{
 @media(max-width:850px){
 
   .grid-main{
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+
+}
+
+
+@media(max-width:600px){
+
+  .panel-head{
+    padding:10px 10px;
+  }
+
+  .panel-head h3{
+    font-size:.74rem;
+  }
+
+  .panel-head p{
+    display:none;
+  }
+
+  .feed,
+  .table-wrap{
+    max-height:340px;
+  }
+
+  .activity{
     grid-template-columns:1fr;
+    gap:2px;
+    padding:9px 10px;
+  }
+
+  .activity-mark{
+    display:none;
+  }
+
+  .activity-amount{
+    text-align:left;
+  }
+
+  .user-tools{
+    padding:8px 10px;
+  }
+
+  thead th,
+  tbody td{
+    padding:8px 6px;
+    font-size:.68rem;
+  }
+
+  .user-id{
+    font-size:.55rem;
+  }
+
+  .balance{
+    font-size:.72rem;
   }
 
 }
