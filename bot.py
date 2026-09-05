@@ -3,6 +3,9 @@ import telebot
 from telebot import types
 import requests
 import logging
+import threading
+import time
+import schedule
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,6 +46,58 @@ ADMIN_HEADERS = {"x-admin-secret": ADMIN_SECRET}
 
 if not ADMIN_SECRET:
     logger.warning("ADMIN_SECRET is not set! Admin confirm/reject requests will fail against the backend.")
+
+
+# ================================================================
+# በቀን 3 ጊዜ ማስታወቂያ — @Spinwin03 ቻናል ላይ በራስ-ሰር የሚለጠፍ
+# ================================================================
+CHANNEL_USERNAME = "@Spinwin03"
+
+MORNING_MESSAGE = (
+    "☀️ እንደምን አደራችሁ ጨዋታ ወዳዶች!\n\n"
+    "🎡 አዲስ ቀን፣ አዲስ እድል! Spin Win ዛሬም ተከፍቷል፣ ጎማውን አዙረህ ቁጥርህን ምረጥ።\n\n"
+    "💰 በትንሽ ብር ጀምር፣ ትልቅ እድል ጠብቅ። ማለዳ ማለዳ የሚጫወቱ ብዙ ጊዜ ቀኑን በጥሩ ስሜት ይጀምራሉ ይባላል! 😄\n\n"
+    "👉 አሁኑኑ ግባ እና ጎማውን አዙር: @BingotomBot"
+)
+
+AFTERNOON_MESSAGE = (
+    "🕧 የቀትር እረፍትህን ከ Spin Win ጋር አሳልፍ!\n\n"
+    "🎡 ስራ ላይ ወይም ቤት ሆነህ፣ ከስልክህ ላይ በ2 ደቂቃ ውስጥ መጫወት ትችላለህ።\n\n"
+    "🔥 ቁጥር ምረጥ፣ ትኬት ቁረጥ፣ ውጤቱን ጠብቅ - ቀላል፣ ፈጣን፣ አጓጊ!\n\n"
+    "👉 አሁኑኑ ተቀላቀል: @BingotomBot"
+)
+
+EVENING_MESSAGE = (
+    "🌙 ቀኑን በደንብ ልታጠናቅቀው ትፈልጋለህ?\n\n"
+    "🎡 Spin Win ምሽት ላይም ክፍት ነው! ከቀኑ ስራ በኋላ ትንሽ ዘና በል፣ ጎማውን አዙር፣ እድልህን ሞክር።\n\n"
+    "✨ ዛሬ ካልተጫወትክ፣ ነገ ሌላ እድል አለ - ግን ዛሬ ማታ ለምን አትሞክርም?\n\n"
+    "👉 አሁኑኑ ጫወት: @BingotomBot"
+)
+
+
+def post_to_channel(message_text):
+    try:
+        bot.send_message(CHANNEL_USERNAME, message_text)
+        logger.info("Channel announcement posted.")
+    except Exception as e:
+        logger.error(f"Failed to post channel announcement: {e}")
+
+
+def run_scheduler():
+    """ይሄ በተለየ thread ውስጥ ያለማቋረጥ ይሮጣል፣ bot.polling() ን አያስተጓጉልም።
+    ጊዜው የሚሰላው ሰርቨሩ (Render) በሚጠቀመው ሰዓት ነው - Render በ UTC ይሮጣል፣
+    ስለዚህ ከታች ያሉት ሰዓቶች ወደ UTC ተቀይረዋል፦
+      08:00 አዲስ አበባ → 05:00 UTC
+      12:30 አዲስ አበባ → 09:30 UTC
+      20:00 አዲስ አበባ → 17:00 UTC
+    """
+    schedule.every().day.at("05:00").do(post_to_channel, MORNING_MESSAGE)
+    schedule.every().day.at("09:30").do(post_to_channel, AFTERNOON_MESSAGE)
+    schedule.every().day.at("17:00").do(post_to_channel, EVENING_MESSAGE)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
 
 
 def set_bot_commands():
@@ -590,5 +645,9 @@ def handle_admin_decision(call, approve):
 
 if __name__ == '__main__':
     set_bot_commands()
+
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+
     logger.info("Bot polling started...")
     bot.polling(none_stop=True)
