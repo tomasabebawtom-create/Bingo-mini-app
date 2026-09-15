@@ -1,0 +1,60 @@
+/* =========================================================
+   PUBLIC ROUND RESULT (ለ TV / ማሳያ ብቻ — user login አያስፈልገውም)
+   ይህንን ክፍል በ server.js ውስጥ ወደ "ROUND RESULT" ክፍል አካባቢ ይለጥፉ
+   (ከ app.get('/api/round-result', ...) በኋላ ማስቀመጥ ይመረጣል)
+========================================================= */
+
+app.get(
+  '/api/public/round-result',
+  async function (req, res) {
+    try {
+      const round =
+        Number(req.query.round);
+
+      if (!Number.isInteger(round)) {
+        return res.status(400).json({
+          error: 'invalid round'
+        });
+      }
+
+      /*
+        Current round ገና ካልተጠናቀቀ ውጤት አንፈጥርም
+        (ልክ እንደ admin/round-result አይነት ጥበቃ)
+      */
+      if (
+        round === currentRoundId() &&
+        !isRoundFinished(round)
+      ) {
+        return res.status(425).json({
+          error: 'round not finished yet',
+          round,
+          bet_close_unix:
+            getRoundTiming(round).betCloseUnix
+        });
+      }
+
+      const result =
+        await resolveRound(round);
+
+      return res.json({
+        success: true,
+        round,
+        winning_number:
+          Number(result.winning_number),
+        winning_color:
+          result.winning_color
+      });
+    } catch (err) {
+      console.error(
+        'public/round-result error:',
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          err.message ||
+          'failed to load round result'
+      });
+    }
+  }
+);
