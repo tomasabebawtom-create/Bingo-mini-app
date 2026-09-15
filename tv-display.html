@@ -204,28 +204,44 @@ function renderHistory(){
   });
 }
 
+async function fetchRoundResultWithRetry(roundId, maxAttempts){
+  for (let attempt = 0; attempt < maxAttempts; attempt++){
+    try{
+      const resp = await fetch(`/api/public/round-result?round=${roundId}`);
+      const data = await resp.json();
+      if (resp.ok && data && typeof data.winning_number === 'number'){
+        document.getElementById('connNote').textContent = '';
+        return data;
+      }
+      /*
+        Server clock ትንሽ ወደ ኋላ ከሆነ (ገና round "አልተጠናቀቀም" ቢል)
+        2 ሰከንድ ጠብቀን በድጋሚ እንሞክራለን።
+      */
+      document.getElementById('connNote').textContent = 'ውጤቱን በመጠባበቅ ላይ...';
+      await new Promise(r => setTimeout(r, 2000));
+    }catch(e){
+      document.getElementById('connNote').textContent = 'ከሰርቨሩ ጋር መገናኘት አልተቻለም — እንደገና በመሞከር ላይ...';
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  return null;
+}
+
 async function showRoundResult(roundId){
   spinning = true;
   document.getElementById('timerBadge').classList.add('spinning');
   document.getElementById('rtLabel').textContent = 'ዙር...';
 
-  let data;
-  try{
-    const resp = await fetch(`/api/public/round-result?round=${roundId}`);
-    data = await resp.json();
-    document.getElementById('connNote').textContent = '';
-  }catch(e){
-    document.getElementById('connNote').textContent = 'ከሰርቨሩ ጋር መገናኘት አልተቻለም — እንደገና በመሞከር ላይ...';
-    spinning = false;
-    document.getElementById('timerBadge').classList.remove('spinning');
-    return;
-  }
+  const data = await fetchRoundResultWithRetry(roundId, 8);
 
-  if (!data || typeof data.winning_number !== 'number'){
+  if (!data){
+    document.getElementById('connNote').textContent = 'ውጤቱን ማምጣት አልተቻለም';
     spinning = false;
     document.getElementById('timerBadge').classList.remove('spinning');
+    document.getElementById('rtLabel').textContent = 'ውርርድ';
     return;
   }
+  document.getElementById('connNote').textContent = '';
 
   const winningNumber = data.winning_number;
   const winningIndex = WHEEL_ORDER.indexOf(winningNumber);
