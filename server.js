@@ -1,4 +1,3 @@
-see You:
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -106,14 +105,14 @@ async function initDb() {
     return;
   }
 
-  await pool.query(
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS balances (
       user_id TEXT PRIMARY KEY,
       balance NUMERIC NOT NULL DEFAULT 0
     )
-  );
+  `);
 
-  await pool.query(
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       order_id SERIAL PRIMARY KEY,
       type TEXT NOT NULL,
@@ -125,9 +124,9 @@ async function initDb() {
       rejected_by TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
-  );
+  `);
 
-  await pool.query(
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS tickets (
       ticket_id TEXT PRIMARY KEY,
       round_id BIGINT NOT NULL,
@@ -143,16 +142,16 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       settled_at TIMESTAMPTZ
     )
-  );
+  `);
 
-  await pool.query(
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS rounds (
       round_id BIGINT PRIMARY KEY,
       winning_number INTEGER NOT NULL,
       winning_color TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
-  );
+  `);
 
   console.log('Database tables ready');
 }
@@ -173,23 +172,23 @@ async function getBalance(userId) {
   }
 
   const result = await pool.query(
-    
+    `
     SELECT balance
     FROM balances
     WHERE user_id = $1
-    ,
+    `,
     [userId]
   );
 
-if (result.rows.length === 0) {
+  if (result.rows.length === 0) {
     await pool.query(
-      
+      `
       INSERT INTO balances
         (user_id, balance)
       VALUES
         ($1, $2)
       ON CONFLICT (user_id) DO NOTHING
-      ,
+      `,
       [
         userId,
         STARTING_BALANCE
@@ -197,11 +196,11 @@ if (result.rows.length === 0) {
     );
 
     const again = await pool.query(
-      
+      `
       SELECT balance
       FROM balances
       WHERE user_id = $1
-      ,
+      `,
       [userId]
     );
 
@@ -237,13 +236,13 @@ async function changeBalance(userId, delta) {
   await getBalance(userId);
 
   const result = await pool.query(
-    
+    `
     UPDATE balances
     SET balance = balance + $2
     WHERE user_id = $1
       AND balance + $2 >= 0
     RETURNING balance
-    ,
+    `,
     [
       userId,
       delta
@@ -292,13 +291,13 @@ async function deductIfSufficient(userId, amount) {
   await getBalance(userId);
 
   const result = await pool.query(
-    
+    `
     UPDATE balances
     SET balance = balance - $2
     WHERE user_id = $1
       AND balance >= $2
     RETURNING balance
-    ,
+    `,
     [
       userId,
       amount
@@ -354,7 +353,7 @@ async function createOrder(type, userId, amount, extra) {
   }
 
   const result = await pool.query(
-    
+    `
     INSERT INTO orders
       (
         type,
@@ -365,7 +364,7 @@ async function createOrder(type, userId, amount, extra) {
     VALUES
       ($1, $2, $3, $4)
     RETURNING order_id
-    ,
+    `,
     [
       type,
       userId,
@@ -385,11 +384,11 @@ async function getOrder(orderId) {
   }
 
   const result = await pool.query(
-    
+    `
     SELECT *
     FROM orders
     WHERE order_id = $1
-    ,
+    `,
     [orderId]
   );
 
@@ -415,7 +414,7 @@ async function markOrder(orderId, status, adminId) {
   orderId = String(orderId);
   adminId = String(adminId || 'admin');
 
-if (!pool) {
+  if (!pool) {
     const order = memOrders.orders[orderId];
 
     if (!order) {
@@ -443,14 +442,14 @@ if (!pool) {
       : 'rejected_by';
 
   const result = await pool.query(
-    
+    `
     UPDATE orders
     SET
       status = $2,
       ${col} = $3
     WHERE order_id = $1
       AND status = 'pending'
-    ,
+    `,
     [
       orderId,
       status,
@@ -476,13 +475,13 @@ async function getAllBalances() {
   }
 
   const result = await pool.query(
-    
+    `
     SELECT
       user_id,
       balance
     FROM balances
     ORDER BY user_id
-    
+    `
   );
 
   return result.rows.map(function (row) {
@@ -520,21 +519,21 @@ async function getConfirmedTotals() {
     };
   }
 
-  const depResult = await pool.query(
+  const depResult = await pool.query(`
     SELECT
       COALESCE(SUM(amount), 0) AS total
     FROM orders
     WHERE type = 'deposit'
       AND status = 'confirmed'
-  );
+  `);
 
-  const wdResult = await pool.query(
+  const wdResult = await pool.query(`
     SELECT
       COALESCE(SUM(amount), 0) AS total
     FROM orders
     WHERE type = 'withdraw'
       AND status = 'confirmed'
-  );
+  `);
 
   return {
     totalDeposits: Number(depResult.rows[0].total),
@@ -628,7 +627,7 @@ function validateInitData(initData) {
         })
         .join('\n');
 
-const secretKey =
+    const secretKey =
       crypto
         .createHmac('sha256', 'WebAppData')
         .update(BOT_TOKEN)
@@ -1107,7 +1106,7 @@ function removeLiability(
         outcome
       );
 
-if (liability[outcome] < 0) {
+    if (liability[outcome] < 0) {
       liability[outcome] = 0;
     }
   }
@@ -1172,13 +1171,13 @@ async function resolveRound(round) {
   if (pool) {
     const existing =
       await pool.query(
-        
+        `
         SELECT
           winning_number,
           winning_color
         FROM rounds
         WHERE round_id = $1
-        ,
+        `,
         [round]
       );
 
@@ -1251,7 +1250,7 @@ async function resolveRound(round) {
       አንድ round አንድ result ብቻ ይኖረዋል።
     */
     await pool.query(
-      
+      `
       INSERT INTO rounds
         (
           round_id,
@@ -1262,7 +1261,7 @@ async function resolveRound(round) {
         ($1, $2, $3)
       ON CONFLICT (round_id)
       DO NOTHING
-      ,
+      `,
       [
         round,
         winningNumber,
@@ -1272,13 +1271,13 @@ async function resolveRound(round) {
 
     const final =
       await pool.query(
-        
+        `
         SELECT
           winning_number,
           winning_color
         FROM rounds
         WHERE round_id = $1
-        ,
+        `,
         [round]
       );
 
@@ -1322,7 +1321,7 @@ async function resolveRound(round) {
     forcedNextNumber.round = null;
   }
 
-/*
+  /*
     NEW: same pre-generated reuse for in-memory mode
   */
   if (
@@ -1377,11 +1376,11 @@ async function getTicket(round, userId) {
 
   const result =
     await pool.query(
-      
+      `
       SELECT *
       FROM tickets
       WHERE ticket_id = $1
-      ,
+      `,
       [ticketId]
     );
 
@@ -1445,7 +1444,7 @@ async function createTicket(ticket) {
 
   const result =
     await pool.query(
-      
+      `
       INSERT INTO tickets
         (
           ticket_id,
@@ -1468,7 +1467,7 @@ async function createTicket(ticket) {
         )
       ON CONFLICT (ticket_id)
       DO NOTHING
-      ,
+      `,
       [
         ticket.ticketId,
         ticket.round,
@@ -1573,7 +1572,7 @@ async function settleTicket(
       winningNumber >= 1 &&
       winningNumber <= 18;
 
-amount =
+    amount =
       won
         ? ticket.stake *
           EVEN_MONEY_MULTIPLIER
@@ -1631,7 +1630,7 @@ amount =
   if (pool) {
     const result =
       await pool.query(
-        
+        `
         UPDATE tickets
         SET
           settled = true,
@@ -1642,7 +1641,7 @@ amount =
         WHERE ticket_id = $1
           AND settled = false
         RETURNING ticket_id
-        ,
+        `,
         [
           ticket.ticketId,
           won,
@@ -1880,13 +1879,13 @@ app.get(
       if (pool) {
         const result =
           await pool.query(
-            
+            `
             SELECT
               winning_number,
               winning_color
             FROM rounds
             WHERE round_id = $1
-            ,
+            `,
             [round]
           );
 
@@ -2001,7 +2000,7 @@ app.get(
         totals.totalWithdrawals -
         totalUserBalance;
 
-res.json({
+      res.json({
         total_users:
           balances.length,
 
@@ -2427,7 +2426,7 @@ app.post(
           const n =
             cleanNumbers[i];
 
-if (
+          if (
             !Number.isInteger(n) ||
             n < 0 ||
             n > 36
@@ -2669,7 +2668,7 @@ app.get(
           req.query.ticket_id || ''
         ).trim();
 
-const user =
+      const user =
         validateInitData(initData);
 
       if (!user) {
@@ -3093,7 +3092,7 @@ app.post(
           order.amount
         );
 
-const marked =
+      const marked =
         await markOrder(
           orderId,
           'confirmed',
@@ -3308,7 +3307,7 @@ app.post(
         });
       }
 
-try {
+      try {
         const orderId =
           await createOrder(
             'withdraw',
@@ -3535,7 +3534,7 @@ app.post(
           -order.amount
         );
 
-return res.status(409).json({
+        return res.status(409).json({
           error:
             'Already handled'
         });
