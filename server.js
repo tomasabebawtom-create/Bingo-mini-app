@@ -1,3 +1,4 @@
+see You:
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -14,13 +15,7 @@ const PORT = process.env.PORT || 3000;
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
-
-/*
-  ⚠️ ADMIN_SECRET ጊዜያዊ በቀጥታ ኮድ ውስጥ (hardcoded) ተቀምጧል
-  ምክንያቱም Render environment variable ላይ ችግር ስለነበረ ነው።
-  bot.py ላይም ተመሳሳይ exact ዋጋ መኖር አለበት።
-*/
-const ADMIN_SECRET = 'SpinWin2026Secret';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 
 const STARTING_BALANCE = 0;
 
@@ -111,14 +106,14 @@ async function initDb() {
     return;
   }
 
-  await pool.query(`
+  await pool.query(
     CREATE TABLE IF NOT EXISTS balances (
       user_id TEXT PRIMARY KEY,
       balance NUMERIC NOT NULL DEFAULT 0
     )
-  `);
+  );
 
-  await pool.query(`
+  await pool.query(
     CREATE TABLE IF NOT EXISTS orders (
       order_id SERIAL PRIMARY KEY,
       type TEXT NOT NULL,
@@ -130,9 +125,9 @@ async function initDb() {
       rejected_by TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
-  `);
+  );
 
-  await pool.query(`
+  await pool.query(
     CREATE TABLE IF NOT EXISTS tickets (
       ticket_id TEXT PRIMARY KEY,
       round_id BIGINT NOT NULL,
@@ -148,16 +143,16 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       settled_at TIMESTAMPTZ
     )
-  `);
+  );
 
-  await pool.query(`
+  await pool.query(
     CREATE TABLE IF NOT EXISTS rounds (
       round_id BIGINT PRIMARY KEY,
       winning_number INTEGER NOT NULL,
       winning_color TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
-  `);
+  );
 
   console.log('Database tables ready');
 }
@@ -178,23 +173,23 @@ async function getBalance(userId) {
   }
 
   const result = await pool.query(
-    `
+    
     SELECT balance
     FROM balances
     WHERE user_id = $1
-    `,
+    ,
     [userId]
   );
 
-  if (result.rows.length === 0) {
+if (result.rows.length === 0) {
     await pool.query(
-      `
+      
       INSERT INTO balances
         (user_id, balance)
       VALUES
         ($1, $2)
       ON CONFLICT (user_id) DO NOTHING
-      `,
+      ,
       [
         userId,
         STARTING_BALANCE
@@ -202,11 +197,11 @@ async function getBalance(userId) {
     );
 
     const again = await pool.query(
-      `
+      
       SELECT balance
       FROM balances
       WHERE user_id = $1
-      `,
+      ,
       [userId]
     );
 
@@ -242,13 +237,13 @@ async function changeBalance(userId, delta) {
   await getBalance(userId);
 
   const result = await pool.query(
-    `
+    
     UPDATE balances
     SET balance = balance + $2
     WHERE user_id = $1
       AND balance + $2 >= 0
     RETURNING balance
-    `,
+    ,
     [
       userId,
       delta
@@ -297,13 +292,13 @@ async function deductIfSufficient(userId, amount) {
   await getBalance(userId);
 
   const result = await pool.query(
-    `
+    
     UPDATE balances
     SET balance = balance - $2
     WHERE user_id = $1
       AND balance >= $2
     RETURNING balance
-    `,
+    ,
     [
       userId,
       amount
@@ -359,7 +354,7 @@ async function createOrder(type, userId, amount, extra) {
   }
 
   const result = await pool.query(
-    `
+    
     INSERT INTO orders
       (
         type,
@@ -370,7 +365,7 @@ async function createOrder(type, userId, amount, extra) {
     VALUES
       ($1, $2, $3, $4)
     RETURNING order_id
-    `,
+    ,
     [
       type,
       userId,
@@ -390,11 +385,11 @@ async function getOrder(orderId) {
   }
 
   const result = await pool.query(
-    `
+    
     SELECT *
     FROM orders
     WHERE order_id = $1
-    `,
+    ,
     [orderId]
   );
 
@@ -420,7 +415,7 @@ async function markOrder(orderId, status, adminId) {
   orderId = String(orderId);
   adminId = String(adminId || 'admin');
 
-  if (!pool) {
+if (!pool) {
     const order = memOrders.orders[orderId];
 
     if (!order) {
@@ -448,14 +443,14 @@ async function markOrder(orderId, status, adminId) {
       : 'rejected_by';
 
   const result = await pool.query(
-    `
+    
     UPDATE orders
     SET
       status = $2,
       ${col} = $3
     WHERE order_id = $1
       AND status = 'pending'
-    `,
+    ,
     [
       orderId,
       status,
@@ -481,13 +476,13 @@ async function getAllBalances() {
   }
 
   const result = await pool.query(
-    `
+    
     SELECT
       user_id,
       balance
     FROM balances
     ORDER BY user_id
-    `
+    
   );
 
   return result.rows.map(function (row) {
@@ -525,21 +520,21 @@ async function getConfirmedTotals() {
     };
   }
 
-  const depResult = await pool.query(`
+  const depResult = await pool.query(
     SELECT
       COALESCE(SUM(amount), 0) AS total
     FROM orders
     WHERE type = 'deposit'
       AND status = 'confirmed'
-  `);
+  );
 
-  const wdResult = await pool.query(`
+  const wdResult = await pool.query(
     SELECT
       COALESCE(SUM(amount), 0) AS total
     FROM orders
     WHERE type = 'withdraw'
       AND status = 'confirmed'
-  `);
+  );
 
   return {
     totalDeposits: Number(depResult.rows[0].total),
@@ -633,7 +628,7 @@ function validateInitData(initData) {
         })
         .join('\n');
 
-    const secretKey =
+const secretKey =
       crypto
         .createHmac('sha256', 'WebAppData')
         .update(BOT_TOKEN)
@@ -1112,7 +1107,7 @@ function removeLiability(
         outcome
       );
 
-    if (liability[outcome] < 0) {
+if (liability[outcome] < 0) {
       liability[outcome] = 0;
     }
   }
@@ -1150,6 +1145,15 @@ async function resolveRound(round) {
     throw new Error('Invalid round');
   }
 
+  /*
+    IMPORTANT FIX:
+    Current round betting ገና ካልተዘጋ
+    result አንፈጥርም።
+
+    ይህ Admin በcurrent round ላይ
+    result በማስኬድ forced number እንዳይበላ
+    ይከላከላል።
+  */
   const currentRound =
     currentRoundId();
 
@@ -1162,16 +1166,19 @@ async function resolveRound(round) {
     );
   }
 
+  /*
+    DATABASE MODE
+  */
   if (pool) {
     const existing =
       await pool.query(
-        `
+        
         SELECT
           winning_number,
           winning_color
         FROM rounds
         WHERE round_id = $1
-        `,
+        ,
         [round]
       );
 
@@ -1191,6 +1198,10 @@ async function resolveRound(round) {
 
     let winningNumber = null;
 
+    /*
+      Forced number የተዘጋጀው
+      ለዚህ round ብቻ ከሆነ እንጠቀማለን።
+    */
     if (
       forcedNextNumber.enabled &&
       Number(forcedNextNumber.round) === round
@@ -1203,6 +1214,14 @@ async function resolveRound(round) {
       forcedNextNumber.round = null;
     }
 
+    /*
+      NEW:
+      ካልተገደደ (forced) ግን አስቀድሞ preview
+      ተደርጎ የተፈጠረ ቁጥር ካለ (pre-generated)፣
+      ያንኑ ቁጥር እንጠቀማለን፣ አዲስ random አንፈጥርም።
+      ይህ preview ላይ የታየው ቁጥር ከመጨረሻው ውጤት
+      ጋር ተመሳሳይ እንዲሆን ያረጋግጣል።
+    */
     if (
       winningNumber === null &&
       round in preGeneratedNumbers
@@ -1226,8 +1245,13 @@ async function resolveRound(round) {
     const winningColor =
       colorFor(winningNumber);
 
+    /*
+      INSERT ON CONFLICT:
+      ሁለት request ቢመጡም
+      አንድ round አንድ result ብቻ ይኖረዋል።
+    */
     await pool.query(
-      `
+      
       INSERT INTO rounds
         (
           round_id,
@@ -1238,7 +1262,7 @@ async function resolveRound(round) {
         ($1, $2, $3)
       ON CONFLICT (round_id)
       DO NOTHING
-      `,
+      ,
       [
         round,
         winningNumber,
@@ -1248,13 +1272,13 @@ async function resolveRound(round) {
 
     const final =
       await pool.query(
-        `
+        
         SELECT
           winning_number,
           winning_color
         FROM rounds
         WHERE round_id = $1
-        `,
+        ,
         [round]
       );
 
@@ -1277,6 +1301,9 @@ async function resolveRound(round) {
     };
   }
 
+  /*
+    IN-MEMORY MODE
+  */
   if (memRounds[round]) {
     return memRounds[round];
   }
@@ -1295,6 +1322,9 @@ async function resolveRound(round) {
     forcedNextNumber.round = null;
   }
 
+/*
+    NEW: same pre-generated reuse for in-memory mode
+  */
   if (
     winningNumber === null &&
     round in preGeneratedNumbers
@@ -1347,11 +1377,11 @@ async function getTicket(round, userId) {
 
   const result =
     await pool.query(
-      `
+      
       SELECT *
       FROM tickets
       WHERE ticket_id = $1
-      `,
+      ,
       [ticketId]
     );
 
@@ -1415,7 +1445,7 @@ async function createTicket(ticket) {
 
   const result =
     await pool.query(
-      `
+      
       INSERT INTO tickets
         (
           ticket_id,
@@ -1438,7 +1468,7 @@ async function createTicket(ticket) {
         )
       ON CONFLICT (ticket_id)
       DO NOTHING
-      `,
+      ,
       [
         ticket.ticketId,
         ticket.round,
@@ -1543,7 +1573,7 @@ async function settleTicket(
       winningNumber >= 1 &&
       winningNumber <= 18;
 
-    amount =
+amount =
       won
         ? ticket.stake *
           EVEN_MONEY_MULTIPLIER
@@ -1601,7 +1631,7 @@ async function settleTicket(
   if (pool) {
     const result =
       await pool.query(
-        `
+        
         UPDATE tickets
         SET
           settled = true,
@@ -1612,7 +1642,7 @@ async function settleTicket(
         WHERE ticket_id = $1
           AND settled = false
         RETURNING ticket_id
-        `,
+        ,
         [
           ticket.ticketId,
           won,
@@ -1687,6 +1717,9 @@ app.post(
       const raw =
         req.body.number;
 
+      /*
+        Random ለማድረግ
+      */
       if (
         raw === null ||
         raw === undefined ||
@@ -1725,6 +1758,10 @@ app.post(
       const round =
         currentRoundId();
 
+      /*
+        Current round ከbetting ጊዜ ውጭ ከሆነ
+        next round ላይ እንዲሰራ እንዘጋጀዋለን።
+      */
       const targetRound =
         isBettingOpen(round)
           ? round
@@ -1734,6 +1771,11 @@ app.post(
       forcedNextNumber.value = number;
       forcedNextNumber.round = targetRound;
 
+      /*
+        NEW:
+        ይህ round ቀድሞ pre-generated random ቁጥር ኖሮት ከሆነ
+        አሁን forced ስለተቀናበረ ግራ መጋባትን ለማስወገድ እናጠፋዋለን።
+      */
       delete preGeneratedNumbers[targetRound];
 
       return res.json({
@@ -1763,7 +1805,10 @@ app.post(
 );
 
 /* =========================================================
-   ADMIN: PREVIEW NUMBER
+   ADMIN: PREVIEW NUMBER (NEW)
+   ቁጥሩ ገና ራውንዱ ከመዝጋቱ በፊት (random ወይም admin የመረጠው
+   ልዩነት ሳይኖረው) ለ admin ብቻ አስቀድሞ እንዲታይ ይመልሳል።
+   ተመሳሳዩ ቁጥር ነው round ሲፈታ ጥቅም ላይ የሚውለው።
 ========================================================= */
 
 app.get(
@@ -1774,6 +1819,11 @@ app.get(
       const round =
         currentRoundId();
 
+      /*
+        Betting ገና ክፍት ከሆነ የአሁኑ round ላይ፣
+        ካልሆነ (ማለትም betting ተዘግቷል ግን round
+        ገና ካላለቀ) ቀጣዩ round ላይ ቀድመን እናዘጋጃለን።
+      */
       const targetRound =
         isBettingOpen(round)
           ? round
@@ -1830,13 +1880,13 @@ app.get(
       if (pool) {
         const result =
           await pool.query(
-            `
+            
             SELECT
               winning_number,
               winning_color
             FROM rounds
             WHERE round_id = $1
-            `,
+            ,
             [round]
           );
 
@@ -1951,7 +2001,7 @@ app.get(
         totals.totalWithdrawals -
         totalUserBalance;
 
-      res.json({
+res.json({
         total_users:
           balances.length,
 
@@ -2085,6 +2135,11 @@ app.get(
           ? requestedRound
           : currentRoundId();
 
+      /*
+        IMPORTANT:
+        Current round betting ገና ካልተዘጋ
+        Admin result እንዲፈጠር አንፈቅድም።
+      */
       if (
         round === currentRoundId() &&
         !isRoundFinished(round)
@@ -2372,7 +2427,7 @@ app.post(
           const n =
             cleanNumbers[i];
 
-          if (
+if (
             !Number.isInteger(n) ||
             n < 0 ||
             n > 36
@@ -2399,6 +2454,10 @@ app.post(
           requestedStake;
       }
 
+      /*
+        Ticket ID በአንድ round/user
+        አንድ ብቻ ነው።
+      */
       const ticketId =
         String(round) +
         '-' +
@@ -2610,7 +2669,7 @@ app.get(
           req.query.ticket_id || ''
         ).trim();
 
-      const user =
+const user =
         validateInitData(initData);
 
       if (!user) {
@@ -2638,6 +2697,10 @@ app.get(
       const nowUnix =
         Math.floor(Date.now() / 1000);
 
+      /*
+        Result 40 seconds ከተሟላ በኋላ ብቻ
+        ይፈቀዳል።
+      */
       if (
         nowUnix <
         timing.betCloseUnix
@@ -2657,6 +2720,10 @@ app.get(
         });
       }
 
+      /*
+        Ticket ID ከተላከ
+        የuser ትክክለኛ ticket ID መሆን አለበት።
+      */
       const expectedTicketId =
         String(round) +
         '-' +
@@ -2672,11 +2739,20 @@ app.get(
         });
       }
 
+      /*
+        User ticket ካለ እንፈልጋለን።
+      */
       const ticket =
         await getTicket(
           round,
           user.id
         );
+
+      /*
+        =====================================================
+        NO TICKET
+        =====================================================
+      */
 
       if (!ticket) {
         const resolved =
@@ -2711,6 +2787,12 @@ app.get(
             null
         });
       }
+
+      /*
+        =====================================================
+        HAS TICKET
+        =====================================================
+      */
 
       const resolved =
         await resolveRound(round);
@@ -2807,7 +2889,10 @@ app.get(
 );
 
 /* =========================================================
-   PUBLIC ROUND RESULT
+   PUBLIC ROUND RESULT (ለ TV / ማሳያ ብቻ — user login አያስፈልገውም)
+   ✅ አዲስ፦ ይህ endpoint initData ወይም ticket ሳያስፈልገው
+   የ round ውጤት (ቁጥር + ቀለም) ብቻ ይመልሳል፣ ለ TV ማሳያ ገጽ
+   (tv-display.html) ጥቅም ላይ ይውላል።
 ========================================================= */
 
 app.get(
@@ -2824,6 +2909,10 @@ app.get(
         });
       }
 
+      /*
+        Current round ገና ካልተጠናቀቀ ውጤት አንፈጥርም
+        (ልክ እንደ admin/round-result አይነት ጥበቃ)
+      */
       if (
         round === currentRoundId() &&
         !isRoundFinished(round)
@@ -2873,6 +2962,8 @@ app.get(
 
 /* =========================================================
    DEPOSIT REQUEST
+   ✅ ተስተካክሏል፦ ከ Mini App (initData) ወይም ከ bot text command
+   (userId በቀጥታ) ሁለቱም ምንጮች ጥያቄ መቀበል ይችላል።
 ========================================================= */
 
 app.post(
@@ -3002,7 +3093,7 @@ app.post(
           order.amount
         );
 
-      const marked =
+const marked =
         await markOrder(
           orderId,
           'confirmed',
@@ -3153,6 +3244,8 @@ app.post(
 
 /* =========================================================
    WITHDRAW REQUEST
+   ✅ ተስተካክሏል፦ ከ Mini App (initData) ወይም ከ bot text command
+   (userId በቀጥታ) ሁለቱም ምንጮች ጥያቄ መቀበል ይችላል።
 ========================================================= */
 
 app.post(
@@ -3215,7 +3308,7 @@ app.post(
         });
       }
 
-      try {
+try {
         const orderId =
           await createOrder(
             'withdraw',
@@ -3442,7 +3535,7 @@ app.post(
           -order.amount
         );
 
-        return res.status(409).json({
+return res.status(409).json({
           error:
             'Already handled'
         });
