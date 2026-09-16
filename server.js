@@ -14,7 +14,13 @@ const PORT = process.env.PORT || 3000;
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
-const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+
+/*
+  ⚠️ ADMIN_SECRET ጊዜያዊ በቀጥታ ኮድ ውስጥ (hardcoded) ተቀምጧል
+  ምክንያቱም Render environment variable ላይ ችግር ስለነበረ ነው።
+  bot.py ላይም ተመሳሳይ exact ዋጋ መኖር አለበት።
+*/
+const ADMIN_SECRET = 'SpinWin2026Secret';
 
 const STARTING_BALANCE = 0;
 
@@ -1144,15 +1150,6 @@ async function resolveRound(round) {
     throw new Error('Invalid round');
   }
 
-  /*
-    IMPORTANT FIX:
-    Current round betting ገና ካልተዘጋ
-    result አንፈጥርም።
-
-    ይህ Admin በcurrent round ላይ
-    result በማስኬድ forced number እንዳይበላ
-    ይከላከላል።
-  */
   const currentRound =
     currentRoundId();
 
@@ -1165,9 +1162,6 @@ async function resolveRound(round) {
     );
   }
 
-  /*
-    DATABASE MODE
-  */
   if (pool) {
     const existing =
       await pool.query(
@@ -1197,10 +1191,6 @@ async function resolveRound(round) {
 
     let winningNumber = null;
 
-    /*
-      Forced number የተዘጋጀው
-      ለዚህ round ብቻ ከሆነ እንጠቀማለን።
-    */
     if (
       forcedNextNumber.enabled &&
       Number(forcedNextNumber.round) === round
@@ -1213,14 +1203,6 @@ async function resolveRound(round) {
       forcedNextNumber.round = null;
     }
 
-    /*
-      NEW:
-      ካልተገደደ (forced) ግን አስቀድሞ preview
-      ተደርጎ የተፈጠረ ቁጥር ካለ (pre-generated)፣
-      ያንኑ ቁጥር እንጠቀማለን፣ አዲስ random አንፈጥርም።
-      ይህ preview ላይ የታየው ቁጥር ከመጨረሻው ውጤት
-      ጋር ተመሳሳይ እንዲሆን ያረጋግጣል።
-    */
     if (
       winningNumber === null &&
       round in preGeneratedNumbers
@@ -1244,11 +1226,6 @@ async function resolveRound(round) {
     const winningColor =
       colorFor(winningNumber);
 
-    /*
-      INSERT ON CONFLICT:
-      ሁለት request ቢመጡም
-      አንድ round አንድ result ብቻ ይኖረዋል።
-    */
     await pool.query(
       `
       INSERT INTO rounds
@@ -1300,9 +1277,6 @@ async function resolveRound(round) {
     };
   }
 
-  /*
-    IN-MEMORY MODE
-  */
   if (memRounds[round]) {
     return memRounds[round];
   }
@@ -1321,9 +1295,6 @@ async function resolveRound(round) {
     forcedNextNumber.round = null;
   }
 
-  /*
-    NEW: same pre-generated reuse for in-memory mode
-  */
   if (
     winningNumber === null &&
     round in preGeneratedNumbers
@@ -1716,9 +1687,6 @@ app.post(
       const raw =
         req.body.number;
 
-      /*
-        Random ለማድረግ
-      */
       if (
         raw === null ||
         raw === undefined ||
@@ -1757,10 +1725,6 @@ app.post(
       const round =
         currentRoundId();
 
-      /*
-        Current round ከbetting ጊዜ ውጭ ከሆነ
-        next round ላይ እንዲሰራ እንዘጋጀዋለን።
-      */
       const targetRound =
         isBettingOpen(round)
           ? round
@@ -1770,11 +1734,6 @@ app.post(
       forcedNextNumber.value = number;
       forcedNextNumber.round = targetRound;
 
-      /*
-        NEW:
-        ይህ round ቀድሞ pre-generated random ቁጥር ኖሮት ከሆነ
-        አሁን forced ስለተቀናበረ ግራ መጋባትን ለማስወገድ እናጠፋዋለን።
-      */
       delete preGeneratedNumbers[targetRound];
 
       return res.json({
@@ -1804,10 +1763,7 @@ app.post(
 );
 
 /* =========================================================
-   ADMIN: PREVIEW NUMBER (NEW)
-   ቁጥሩ ገና ራውንዱ ከመዝጋቱ በፊት (random ወይም admin የመረጠው
-   ልዩነት ሳይኖረው) ለ admin ብቻ አስቀድሞ እንዲታይ ይመልሳል።
-   ተመሳሳዩ ቁጥር ነው round ሲፈታ ጥቅም ላይ የሚውለው።
+   ADMIN: PREVIEW NUMBER
 ========================================================= */
 
 app.get(
@@ -1818,11 +1774,6 @@ app.get(
       const round =
         currentRoundId();
 
-      /*
-        Betting ገና ክፍት ከሆነ የአሁኑ round ላይ፣
-        ካልሆነ (ማለትም betting ተዘግቷል ግን round
-        ገና ካላለቀ) ቀጣዩ round ላይ ቀድመን እናዘጋጃለን።
-      */
       const targetRound =
         isBettingOpen(round)
           ? round
@@ -2134,11 +2085,6 @@ app.get(
           ? requestedRound
           : currentRoundId();
 
-      /*
-        IMPORTANT:
-        Current round betting ገና ካልተዘጋ
-        Admin result እንዲፈጠር አንፈቅድም።
-      */
       if (
         round === currentRoundId() &&
         !isRoundFinished(round)
@@ -2453,10 +2399,6 @@ app.post(
           requestedStake;
       }
 
-      /*
-        Ticket ID በአንድ round/user
-        አንድ ብቻ ነው።
-      */
       const ticketId =
         String(round) +
         '-' +
@@ -2696,10 +2638,6 @@ app.get(
       const nowUnix =
         Math.floor(Date.now() / 1000);
 
-      /*
-        Result 40 seconds ከተሟላ በኋላ ብቻ
-        ይፈቀዳል።
-      */
       if (
         nowUnix <
         timing.betCloseUnix
@@ -2719,10 +2657,6 @@ app.get(
         });
       }
 
-      /*
-        Ticket ID ከተላከ
-        የuser ትክክለኛ ticket ID መሆን አለበት።
-      */
       const expectedTicketId =
         String(round) +
         '-' +
@@ -2738,20 +2672,11 @@ app.get(
         });
       }
 
-      /*
-        User ticket ካለ እንፈልጋለን።
-      */
       const ticket =
         await getTicket(
           round,
           user.id
         );
-
-      /*
-        =====================================================
-        NO TICKET
-        =====================================================
-      */
 
       if (!ticket) {
         const resolved =
@@ -2786,12 +2711,6 @@ app.get(
             null
         });
       }
-
-      /*
-        =====================================================
-        HAS TICKET
-        =====================================================
-      */
 
       const resolved =
         await resolveRound(round);
@@ -2888,10 +2807,7 @@ app.get(
 );
 
 /* =========================================================
-   PUBLIC ROUND RESULT (ለ TV / ማሳያ ብቻ — user login አያስፈልገውም)
-   ✅ አዲስ፦ ይህ endpoint initData ወይም ticket ሳያስፈልገው
-   የ round ውጤት (ቁጥር + ቀለም) ብቻ ይመልሳል፣ ለ TV ማሳያ ገጽ
-   (tv-display.html) ጥቅም ላይ ይውላል።
+   PUBLIC ROUND RESULT
 ========================================================= */
 
 app.get(
@@ -2908,10 +2824,6 @@ app.get(
         });
       }
 
-      /*
-        Current round ገና ካልተጠናቀቀ ውጤት አንፈጥርም
-        (ልክ እንደ admin/round-result አይነት ጥበቃ)
-      */
       if (
         round === currentRoundId() &&
         !isRoundFinished(round)
@@ -2961,8 +2873,6 @@ app.get(
 
 /* =========================================================
    DEPOSIT REQUEST
-   ✅ ተስተካክሏል፦ ከ Mini App (initData) ወይም ከ bot text command
-   (userId በቀጥታ) ሁለቱም ምንጮች ጥያቄ መቀበል ይችላል።
 ========================================================= */
 
 app.post(
@@ -3243,8 +3153,6 @@ app.post(
 
 /* =========================================================
    WITHDRAW REQUEST
-   ✅ ተስተካክሏል፦ ከ Mini App (initData) ወይም ከ bot text command
-   (userId በቀጥታ) ሁለቱም ምንጮች ጥያቄ መቀበል ይችላል።
 ========================================================= */
 
 app.post(
